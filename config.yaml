@@ -1,0 +1,25 @@
+# Maqro RAG Configuration
+embedding:
+  provider: "openai"  # "openai" or "cohere"
+  model: "text-embedding-ada-002"  # OpenAI model
+  # cohere_model: "embed-english-v3.0"  # Cohere model (if using cohere)
+  batch_size: 100
+  max_retries: 3
+
+vector_store:
+  type: "faiss"  # "faiss", "pinecone", "weaviate"
+  dimension: 1536  # OpenAI ada-002 dimension
+  # pinecone:
+  #   environment: "us-west1-gcp"
+  #   index_name: "maqro-inventory"
+  # weaviate:
+  #   url: "http://localhost:8080"
+  #   class_name: "Vehicle"
+
+retrieval:
+  top_k: 3
+  similarity_threshold: 0.7
+
+logging:
+  level: "INFO"
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}" 
