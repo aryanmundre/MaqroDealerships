@@ -73,6 +73,33 @@ def test_get_conversations(lead_id):
     print(f"Response: {json.dumps(response.json(), indent=2)}")
     print()
 
+def test_general_ai_response():
+    """Test general AI response endpoint"""
+    print("Testing general AI response...")
+    
+    request_data = {
+        "query": "Looking for a reliable sedan with good gas mileage",
+        "customer_name": "John"
+    }
+    
+    response = requests.post(f"{BASE_URL}/ai-response/general", json=request_data)
+    print(f"Status: {response.status_code}")
+    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    print()
+
+def test_conversation_ai_response(lead_id):
+    """Test conversation-based AI response endpoint"""
+    print(f"Testing conversation AI response for lead {lead_id}...")
+    
+    request_data = {
+        "include_full_context": True
+    }
+    
+    response = requests.post(f"{BASE_URL}/conversations/{lead_id}/ai-response", json=request_data)
+    print(f"Status: {response.status_code}")
+    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    print()
+
 def main():
     """Run all tests"""
     print("Starting Maqro API Tests")
@@ -96,6 +123,16 @@ def main():
     test_get_lead(lead_id)
     
     # Test 5: Get conversations
+    test_get_conversations(lead_id)
+    
+    # Test 6: General AI response (no conversation context)
+    test_general_ai_response()
+    
+    # Test 7: Conversation-based AI response
+    test_conversation_ai_response(lead_id)
+    
+    # Test 8: Get conversations again to see AI response
+    print("Testing conversations after AI response...")
     test_get_conversations(lead_id)
     
     print("All tests completed!")

@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker
 from backend.models import Base
 import os 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://localhost/maqro_dealerships")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://localhost/maqro_dealership")
 
 engine = create_async_engine(DATABASE_URL)
 SessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

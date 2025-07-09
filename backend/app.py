@@ -3,10 +3,16 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional, Dict, Any
 from maqro_rag import Config, VehicleRetriever
 from backend.database import get_db, create_tables
 from backend.models import Lead, Conversation
+from backend.ai_services import (
+    get_all_conversation_history,
+    get_last_customer_message,
+    generate_ai_response_text,
+    generate_contextual_ai_response
+)
 
 # Global variable to store retriever
 retriever = None
@@ -24,6 +30,15 @@ class MessageCreate(BaseModel):
     """Data structure for adding a new message to existing lead"""
     lead_id: int
     message: str
+
+class AIResponseRequest(BaseModel):
+    """Data structure for conversation-based AI response requests"""
+    include_full_context: Optional[bool] = True
+
+class GeneralAIRequest(BaseModel):
+    """Data structure for general AI response (no conversation context)"""
+    query: str
+    customer_name: Optional[str] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -137,7 +152,7 @@ async def add_message(message_data: MessageCreate, db: AsyncSession = Depends(ge
     # 3. Save to database
     db.add(new_conversation)
     await db.commit()
-    
+
     print(f"Message saved for lead {lead.name}")
     
     return {
@@ -147,21 +162,97 @@ async def add_message(message_data: MessageCreate, db: AsyncSession = Depends(ge
     }
 
 
-@app.get("/leads/{lead_id}")
-async def get_lead(lead_id: int, db: AsyncSession = Depends(get_db)):
-    """Get a specific lead by ID"""
+
+@app.post("/conversations/{lead_id}/ai-response")
+async def generate_conversation_ai_response(lead_id: int, request_data: Optional[AIResponseRequest] = None,
+    db: AsyncSession = Depends(get_db)):
+    """
+    Generate AI response based on complete conversation history and save it
+    This endpoint uses the FULL conversation history to generate contextually aware responses.
+    """
+    print(f"Generating AI response for lead {lead_id}")
+    
+    # Check if lead exists
     lead = await db.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
+
+    try:
+        # Get complete conversation history (no limits)
+        all_conversations = await get_all_conversation_history(lead_id, db)
+        
+        if not all_conversations:
+            raise HTTPException(status_code=400, detail="No conversation history found")
+        
+        # Get the last customer message for RAG search
+        last_customer_message = get_last_customer_message(all_conversations)
+        
+        if not last_customer_message:
+            raise HTTPException(status_code=400, detail="No customer message found to respond to")
+        
+        # Use RAG system to find relevant vehicles based on last customer message
+        vehicles = retriever.search_vehicles(last_customer_message, top_k=3)
+        
+        # Generate AI response using full conversation context
+        ai_response_text = generate_contextual_ai_response(all_conversations, vehicles, lead.name)
+        
+        # Save AI response to database
+        ai_response = Conversation(
+            lead_id=lead_id,
+            message=ai_response_text,
+            sender="agent"
+        )
+        db.add(ai_response)
+        await db.commit()
+        await db.refresh(ai_response)
+        
+        print(f"AI response generated and saved for lead {lead.name}")
+        
+        return {
+            "response_id": ai_response.id,
+            "response_text": ai_response_text,
+            "lead_id": lead_id,
+            "lead_name": lead.name,
+            "total_conversations": len(all_conversations),
+            "last_customer_message": last_customer_message
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating AI response: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate AI response")
+
+
+@app.post("/ai-response/general")
+async def generate_general_ai_response(request_data: GeneralAIRequest):
+    """
+    Generate AI response based on general text query (no conversation context)
+    """
+    print(f"Generating general AI response for query: {request_data.query}")
     
-    return {
-        "id": lead.id,
-        "name": lead.name,
-        "email": lead.email,
-        "phone": lead.phone,
-        "status": lead.status,
-        "created_at": lead.created_at
-    }
+    try:
+        # Use RAG system directly
+        vehicles = retriever.search_vehicles(request_data.query, top_k=3)
+        
+        # Generate response
+        ai_response_text = generate_ai_response_text(
+            request_data.query, 
+            vehicles, 
+            request_data.customer_name
+        )
+        
+        return {
+            "query": request_data.query,
+            "response_text": ai_response_text,
+            "vehicles_found": len(vehicles),
+            "vehicles": vehicles
+        }
+        
+    except Exception as e:
+        print(f"Error generating general AI response: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate AI response")
+
 
 @app.get("/leads/{lead_id}/conversations")
 async def get_conversations(lead_id: int, db: AsyncSession = Depends(get_db)):
