@@ -7,6 +7,10 @@ from typing import List, Optional, Dict, Any
 from maqro_rag import Config, VehicleRetriever
 from backend.database import get_db, create_tables
 from backend.models import Lead, Conversation
+from backend.serializers import (
+    LeadResponse, ConversationResponse, 
+    LeadCreate, MessageCreate
+)
 from backend.ai_services import (
     get_all_conversation_history,
     get_last_customer_message,
@@ -18,18 +22,6 @@ from backend.ai_services import (
 retriever = None
 
 # These define the structure of data we expect from the frontend
-
-class LeadCreate(BaseModel):
-    """Data structure for creating a new lead"""
-    name: str
-    email: str 
-    phone: str
-    message: str  # Their initial message/inquiry
-
-class MessageCreate(BaseModel):
-    """Data structure for adding a new message to existing lead"""
-    lead_id: int
-    message: str
 
 class AIResponseRequest(BaseModel):
     """Data structure for conversation-based AI response requests"""
@@ -124,6 +116,21 @@ async def create_lead(lead_data: LeadCreate, db: AsyncSession = Depends(get_db))
         "status": "created",
         "message": f"Lead {new_lead.name} created successfully"
     }
+
+@app.get("/leads", response_model=List[LeadResponse])
+async def get_all_leads(db: AsyncSession = Depends(get_db)):
+    """Get all leads with standardized response format"""
+    result = await db.execute(select(Lead).order_by(Lead.created_at.desc()))
+    leads = result.scalars().all()
+    return leads  # Automatically serialized by Pydantic
+
+@app.get("/leads/{lead_id}", response_model=LeadResponse)
+async def get_lead(lead_id: int, db: AsyncSession = Depends(get_db)):
+    """Get specific lead with standardized response format"""
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return lead  # Automatically serialized by Pydantic
 
 @app.post("/messages")
 async def add_message(message_data: MessageCreate, db: AsyncSession = Depends(get_db)):
@@ -254,9 +261,27 @@ async def generate_general_ai_response(request_data: GeneralAIRequest):
         raise HTTPException(status_code=500, detail="Failed to generate AI response")
 
 
-@app.get("/leads/{lead_id}/conversations")
+@app.get("/leads/{lead_id}/conversations", response_model=List[ConversationResponse])
 async def get_conversations(lead_id: int, db: AsyncSession = Depends(get_db)):
-    """Get all conversations for a lead"""
+    """Get all conversations for a lead with standardized response format"""
+    # Check if lead exists
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # Get all conversations for this lead
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.lead_id == lead_id)
+        .order_by(Conversation.created_at)
+    )
+    conversations = result.scalars().all()
+    
+    return conversations  # Automatically serialized by Pydantic
+
+@app.get("/leads/{lead_id}/conversations-with-lead")
+async def get_conversations_with_lead_info(lead_id: int, db: AsyncSession = Depends(get_db)):
+    """Get all conversations for a lead with lead information included"""
     # Check if lead exists
     lead = await db.get(Lead, lead_id)
     if not lead:
@@ -271,14 +296,6 @@ async def get_conversations(lead_id: int, db: AsyncSession = Depends(get_db)):
     conversations = result.scalars().all()
     
     return {
-        "lead_name": lead.name,
-        "conversations": [
-            {
-                "id": conv.id,
-                "message": conv.message,
-                "sender": conv.sender,
-                "created_at": conv.created_at
-            }
-            for conv in conversations
-        ]
+        "lead": LeadResponse.model_validate(lead),
+        "conversations": [ConversationResponse.model_validate(conv) for conv in conversations]
     }
