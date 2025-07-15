@@ -1,0 +1,8 @@
+[project]
+name = "maqro-dealerships"
+version = "0.1.0"
+dependencies = ["fastapi"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages     = ["maqro_backend", "maqro_rag"]
