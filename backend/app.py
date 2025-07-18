@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from maqro_rag import Config, VehicleRetriever
 from backend.database import get_db, create_tables
 from backend.models import Lead, Conversation
@@ -13,9 +14,11 @@ from backend.ai_services import (
     generate_ai_response_text,
     generate_contextual_ai_response
 )
+from backend.rag_enhanced import EnhancedRAGService
 
-# Global variable to store retriever
+# Global variables to store RAG services
 retriever = None
+enhanced_rag_service = None
 
 # These define the structure of data we expect from the frontend
 
@@ -48,14 +51,17 @@ async def lifespan(app: FastAPI):
     - Shutdown: Cleanup (if needed)
     """
 
-    global retriever
+    global retriever, enhanced_rag_service
     print("Starting up Maqro API...")
     
     # 1. Load RAG system for vehicle search
     config = Config.from_yaml("config.yaml")
     retriever = VehicleRetriever(config)
     retriever.load_index("vehicle_index")
-    print("RAG system loaded")
+    
+    # 2. Initialize enhanced RAG service
+    enhanced_rag_service = EnhancedRAGService(retriever)
+    print("Enhanced RAG system loaded")
     
     # 2. Create database tables if they don't exist
     await create_tables()
@@ -190,11 +196,22 @@ async def generate_conversation_ai_response(lead_id: int, request_data: Optional
         if not last_customer_message:
             raise HTTPException(status_code=400, detail="No customer message found to respond to")
         
-        # Use RAG system to find relevant vehicles based on last customer message
-        vehicles = retriever.search_vehicles(last_customer_message, top_k=3)
+        # Use enhanced RAG system to find relevant vehicles with context
+        vehicles = enhanced_rag_service.search_vehicles_with_context(
+            last_customer_message, 
+            all_conversations, 
+            top_k=3
+        )
         
-        # Generate AI response using full conversation context
-        ai_response_text = generate_contextual_ai_response(all_conversations, vehicles, lead.name)
+        # Generate enhanced AI response with quality metrics
+        enhanced_response = enhanced_rag_service.generate_enhanced_response(
+            last_customer_message,
+            vehicles,
+            all_conversations,
+            lead.name
+        )
+        
+        ai_response_text = enhanced_response['response_text']
         
         # Save AI response to database
         ai_response = Conversation(
@@ -214,7 +231,11 @@ async def generate_conversation_ai_response(lead_id: int, request_data: Optional
             "lead_id": lead_id,
             "lead_name": lead.name,
             "total_conversations": len(all_conversations),
-            "last_customer_message": last_customer_message
+            "last_customer_message": last_customer_message,
+            "quality_metrics": enhanced_response.get('quality_metrics', {}),
+            "follow_up_suggestions": enhanced_response.get('follow_up_suggestions', []),
+            "context_analysis": enhanced_response.get('context_analysis', {}),
+            "vehicles_found": enhanced_response.get('vehicles_found', 0)
         }
         
     except HTTPException:
@@ -232,26 +253,76 @@ async def generate_general_ai_response(request_data: GeneralAIRequest):
     print(f"Generating general AI response for query: {request_data.query}")
     
     try:
-        # Use RAG system directly
-        vehicles = retriever.search_vehicles(request_data.query, top_k=3)
-        
-        # Generate response
-        ai_response_text = generate_ai_response_text(
+        # Use enhanced RAG system directly
+        vehicles = enhanced_rag_service.search_vehicles_with_context(
             request_data.query, 
-            vehicles, 
+            [],  # No conversation history for general queries
+            top_k=3
+        )
+        
+        # Generate enhanced response
+        enhanced_response = enhanced_rag_service.generate_enhanced_response(
+            request_data.query,
+            vehicles,
+            [],  # No conversation history
             request_data.customer_name
         )
         
         return {
             "query": request_data.query,
-            "response_text": ai_response_text,
-            "vehicles_found": len(vehicles),
-            "vehicles": vehicles
+            "response_text": enhanced_response['response_text'],
+            "vehicles_found": enhanced_response.get('vehicles_found', 0),
+            "vehicles": vehicles,
+            "quality_metrics": enhanced_response.get('quality_metrics', {}),
+            "follow_up_suggestions": enhanced_response.get('follow_up_suggestions', [])
         }
         
     except Exception as e:
         print(f"Error generating general AI response: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate AI response")
+
+
+@app.post("/ai-response/enhanced")
+async def generate_enhanced_ai_response(request_data: GeneralAIRequest):
+    """
+    Generate enhanced AI response with advanced features
+    """
+    print(f"Generating enhanced AI response for query: {request_data.query}")
+    
+    try:
+        # Use enhanced RAG system with advanced features
+        vehicles = enhanced_rag_service.search_vehicles_with_context(
+            request_data.query, 
+            [], 
+            top_k=5  # Get more vehicles for enhanced response
+        )
+        
+        # Generate enhanced response with full features
+        enhanced_response = enhanced_rag_service.generate_enhanced_response(
+            request_data.query,
+            vehicles,
+            [],
+            request_data.customer_name
+        )
+        
+        return {
+            "query": request_data.query,
+            "response_text": enhanced_response['response_text'],
+            "vehicles_found": enhanced_response.get('vehicles_found', 0),
+            "vehicles": vehicles,
+            "quality_metrics": enhanced_response.get('quality_metrics', {}),
+            "follow_up_suggestions": enhanced_response.get('follow_up_suggestions', []),
+            "context_analysis": enhanced_response.get('context_analysis', {}),
+            "response_metadata": {
+                "generated_at": datetime.now().isoformat(),
+                "response_type": "enhanced",
+                "confidence_score": sum(enhanced_response.get('quality_metrics', {}).values()) / 4
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error generating enhanced AI response: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate enhanced AI response")
 
 
 @app.get("/leads/{lead_id}/conversations")
