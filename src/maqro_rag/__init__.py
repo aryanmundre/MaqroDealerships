@@ -12,11 +12,13 @@ from maqro_rag.embedding import EmbeddingProvider
 from maqro_rag.vector_store import VectorStore
 from maqro_rag.inventory import InventoryProcessor
 from maqro_rag.retrieval import VehicleRetriever
+from maqro_rag.rag_enhanced import EnhancedRAGService
 
 __all__ = [
     "Config",
     "EmbeddingProvider", 
     "VectorStore",
     "InventoryProcessor",
-    "VehicleRetriever"
+    "VehicleRetriever",
+    "EnhancedRAGService"
 ] 

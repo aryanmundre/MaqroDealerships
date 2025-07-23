@@ -10,15 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from backend.database import get_db, create_tables
-from backend.models import Lead, Conversation
-from backend.serializers import (
+from maqro_backend.db.session import get_db, create_tables
+from maqro_backend.db.models.lead import Lead
+from maqro_backend.db.models.conversation import Conversation
+from maqro_backend.schemas import (
     LeadResponse, ConversationResponse,
     LeadCreate, MessageCreate
 )
-from backend.ai_services import (
+from maqro_backend.services.ai_services import (
     get_all_conversation_history,
-    get_last_customer_message,
+    get_last_customer_message
     generate_ai_response_text,
     generate_contextual_ai_response
 )
