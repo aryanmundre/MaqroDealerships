@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime
 from datetime import datetime
 from maqro_backend.db.base import Base
+import pytz
 
 class DealershipInfo(Base):
     """Basic dealership information for each installation"""
@@ -14,8 +15,8 @@ class DealershipInfo(Base):
     website = Column(String(250))
     logo_url = Column(String(250))
 
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.now(pytz.utc))
+    updated_at = Column(DateTime, default=datetime.now(pytz.utc), onupdate=datetime.now(pytz.utc))
 
 
 class AppSettings(Base):
@@ -44,5 +45,5 @@ class AppSettings(Base):
     ai_response_tone = Column(String(20), default="professional")
     auto_respond_enabled = Column(Boolean, default=True)
     
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.now(pytz.utc))
+    updated_at = Column(DateTime, default=datetime.now(pytz.utc), onupdate=datetime.now(pytz.utc))

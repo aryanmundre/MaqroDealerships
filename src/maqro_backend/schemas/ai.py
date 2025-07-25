@@ -18,6 +18,7 @@ class AIResponse(BaseModel):
     query: str | None = None
     lead_id: int | None = None
     lead_name: str | None = None
+    response_time_sec: int | None = None
 
 
 class VehicleSearchResponse(BaseModel):

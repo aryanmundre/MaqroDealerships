@@ -4,7 +4,8 @@ from .db.models.conversation import Conversation
 from .db.models.lead import Lead
 from .schemas.conversation import MessageCreate
 from .schemas.lead import LeadCreate
-
+from datetime import datetime
+import pytz
 
 # =============================================================================
 # LEAD CRUD OPERATIONS
@@ -48,12 +49,13 @@ async def get_lead_by_email(*, session: AsyncSession, email: str) -> Lead | None
 # CONVERSATION CRUD OPERATIONS
 # =============================================================================
 
-async def create_conversation(*, session: AsyncSession, lead_id: int, message: str, sender: str) -> Conversation:
-    """Create a new conversation message"""
+async def create_conversation(*, session: AsyncSession, lead_id: int, message: str, sender: str, response_time_sec: int | None = None) -> Conversation:
+    """Create a new conversation message. If sender is an agent, `response_time_sec` can capture latency to the previous customer message."""
     db_obj = Conversation(
         lead_id=lead_id,
         message=message,
-        sender=sender
+        sender=sender,
+        response_time_sec=response_time_sec
     )
     session.add(db_obj)
     await session.commit()

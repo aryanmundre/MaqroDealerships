@@ -16,6 +16,7 @@ class ConversationResponse(ConversationBase):
     lead_id: int
     sender: str
     created_at: datetime
+    response_time_sec: int
 
     class Config:
         from_attributes = True

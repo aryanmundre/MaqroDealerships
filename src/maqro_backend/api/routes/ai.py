@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
+import pytz
 from maqro_rag import VehicleRetriever, EnhancedRAGService
 from maqro_backend.api.deps import get_db_session, get_enhanced_rag_services
 from maqro_backend.schemas.ai import AIResponseRequest, GeneralAIRequest
@@ -68,12 +69,24 @@ async def generate_conversation_ai_response(
         # Generate AI response using full conversation context
         ai_response_text = enhanced_response['response_text']
         
-        # Save AI response to database
+        # Calculate response latency to previous customer message
+        prev_customer_time = None
+        for conv in reversed(all_conversations):
+            if conv.sender == "customer":
+                prev_customer_time = conv.created_at
+                break
+
+        response_time_sec = None
+        if prev_customer_time is not None:
+            response_time_sec = int((datetime.now(pytz.utc) - prev_customer_time).total_seconds())
+
+        # Save AI response to database, capturing response latency
         ai_response = await create_conversation(
             session=db,
             lead_id=lead_id,
             message=ai_response_text,
-            sender="agent"
+            sender="agent",
+            response_time_sec=response_time_sec
         )
         
         print(f"AI response generated and saved for lead {lead.name}")
@@ -171,7 +184,7 @@ async def generate_enhanced_ai_response(
             "follow_up_suggestions": enhanced_response.get('follow_up_suggestions', []),
             "context_analysis": enhanced_response.get('context_analysis', {}),
             "response_metadata": {
-                "generated_at": datetime.now().isoformat(),
+                "generated_at": datetime.now(pytz.utc).isoformat(),
                 "response_type": "enhanced",
                 "confidence_score": sum(enhanced_response.get('quality_metrics', {}).values()) / 4
             }
