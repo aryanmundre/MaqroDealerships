@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+NEVER run sensitive API calls from the frontend
+No secrets in .tsx or client-side code

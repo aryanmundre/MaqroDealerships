@@ -5,13 +5,14 @@ import "./globals.css"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Header } from "@/components/header"
+import { AuthProvider } from "@/components/auth/auth-provider"
+import { ThemeProvider } from "@/components/theme-provider"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Maqro - Lead Management Dashboard",
-  description: "Premium CRM for lead management and conversations",
-    generator: 'v0.dev'
+  description: "Premium CRM for lead management and conversations"
 }
 
 export default function RootLayout({
@@ -22,15 +23,19 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-gray-950 text-gray-100`}>
-        <SidebarProvider defaultOpen={true}>
-          <div className="flex min-h-screen w-full bg-gray-950">
-            <AppSidebar />
-            <div className="flex-1 flex flex-col min-w-0">
-              <Header />
-              <main className="flex-1 p-4 md:p-6 overflow-auto">{children}</main>
-            </div>
-          </div>
-        </SidebarProvider>
+        <ThemeProvider attribute="class" defaultTheme="dark">
+          <AuthProvider>
+            <SidebarProvider defaultOpen={true}>
+              <div className="flex min-h-screen w-full bg-gray-950">
+                <AppSidebar />
+                <div className="flex-1 flex flex-col min-w-0">
+                  <Header />
+                  <main className="flex-1 p-4 md:p-6 overflow-auto">{children}</main>
+                </div>
+              </div>
+            </SidebarProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

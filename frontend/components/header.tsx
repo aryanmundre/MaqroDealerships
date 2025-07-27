@@ -1,11 +1,20 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Bell, User } from "lucide-react"
+import { Search, Bell, User, LogOut } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { useAuth } from "@/components/auth/auth-provider"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 const pageNames: Record<string, string> = {
   "/": "Dashboard",
@@ -20,6 +29,7 @@ export function Header() {
   const searchParams = useSearchParams()
   const [searchTerm, setSearchTerm] = useState("")
   const pageName = pageNames[pathname] || "Dashboard"
+  const { user, signOut, loading } = useAuth()
 
   // Initialize search term from URL params
   useEffect(() => {
@@ -87,15 +97,35 @@ export function Header() {
             <Bell className="w-5 h-5" />
           </Button>
 
-          <Link href="/settings">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-gray-400 hover:text-gray-100 hover:bg-gray-800/50 animate-float transition-all duration-300"
-            >
-              <User className="w-5 h-5" />
-            </Button>
-          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-gray-400 hover:text-gray-100 hover:bg-gray-800/50 animate-float transition-all duration-300"
+              >
+                <User className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56 mr-2 bg-gray-900 border-gray-800 text-gray-100">
+              <DropdownMenuLabel>
+                {loading ? 'Loading...' : user?.email || 'My Account'}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-gray-800" />
+              <Link href="/settings">
+                <DropdownMenuItem className="cursor-pointer hover:bg-gray-800">
+                  Settings
+                </DropdownMenuItem>
+              </Link>
+              <DropdownMenuItem 
+                className="cursor-pointer hover:bg-gray-800 text-red-400"
+                onClick={() => signOut()}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

@@ -1,0 +1,41 @@
+import { createClient } from '@supabase/supabase-js';
+
+// These environment variables need to be set in your .env.local file
+// NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+// NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('Missing Supabase environment variables. Check your .env.local file.');
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Type definitions for your Supabase tables
+export type Lead = {
+  id: string;
+  created_at: string;
+  name: string;
+  car: string;
+  source: string;
+  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold';
+  last_contact: string;
+  email?: string;
+  phone?: string;
+  message?: string;
+  user_id: string; // Foreign key to auth.users
+};
+
+// Helper function to check if user is logged in
+export const isUserLoggedIn = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return !!session;
+};
+
+// Helper function to get current user
+export const getCurrentUser = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}; 
