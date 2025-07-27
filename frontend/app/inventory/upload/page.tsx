@@ -2,8 +2,6 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import { Upload, FileText, AlertCircle, CheckCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +10,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { inventoryApi, type InventoryRow, type InventoryUploadResult } from '@/lib/inventory-api';
+import { fileParser } from '@/lib/file-parser';
+import { FILE_UPLOAD } from '@/lib/constants';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function InventoryUploadPage() {
@@ -23,78 +23,26 @@ export default function InventoryUploadPage() {
   const { toast } = useToast();
   const router = useRouter();
 
-  const parseFile = useCallback((file: File) => {
-    const reader = new FileReader();
+  const parseFile = useCallback(async (file: File) => {
+    const result = await fileParser.parseFile(file);
     
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      
-      if (file.name.endsWith('.csv')) {
-        try {
-          Papa.parse(content as any, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results: Papa.ParseResult<any>) => {
-              const parsedData = results.data as any[];
-              const mappedData = mapColumns(parsedData);
-              setPreviewData(mappedData);
-            }
-          });
-        } catch (error) {
-          toast({
-            title: "Error parsing CSV",
-            description: error instanceof Error ? error.message : "Failed to parse CSV file",
-            variant: "destructive"
-          });
-        }
-      } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        try {
-          const workbook = XLSX.read(content, { type: 'binary' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
-          const mappedData = mapColumns(jsonData);
-          setPreviewData(mappedData);
-        } catch (error) {
-          toast({
-            title: "Error parsing Excel file",
-            description: "Please check the file format and try again.",
-            variant: "destructive"
-          });
-        }
-      }
-    };
-    
-    reader.readAsBinaryString(file);
+    if (result.success && result.data) {
+      setPreviewData(result.data);
+    } else {
+      toast({
+        title: "Error parsing file",
+        description: result.error || "Failed to parse file",
+        variant: "destructive"
+      });
+    }
   }, [toast]);
 
-  const mapColumns = (data: any[]): InventoryRow[] => {
-    return data.map(row => {
-      // Try to map common column names
-      const make = row.make || row.Make || row.MAKE || row['Make'] || '';
-      const model = row.model || row.Model || row.MODEL || row['Model'] || '';
-      const year = parseInt(row.year || row.Year || row.YEAR || row['Year'] || '0');
-      const price = parseFloat(row.price || row.Price || row.PRICE || row['Price'] || '0');
-      const mileage = row.mileage ? parseInt(row.mileage) : undefined;
-      const description = row.description || row.Description || row.DESC || row['Description'] || '';
-      const features = row.features || row.Features || row.FEATURES || row['Features'] || '';
-
-      return {
-        make: make.toString(),
-        model: model.toString(),
-        year,
-        price,
-        mileage,
-        description: description.toString(),
-        features: features.toString()
-      };
-    });
-  };
-
   const handleFileSelect = (selectedFile: File) => {
-    if (selectedFile.type === 'text/csv' || 
-        selectedFile.name.endsWith('.xlsx') || 
-        selectedFile.name.endsWith('.xls')) {
+    const isValidType = FILE_UPLOAD.ACCEPTED_TYPES.some(ext => 
+      selectedFile.name.toLowerCase().endsWith(ext)
+    );
+    
+    if (isValidType) {
       setFile(selectedFile);
       parseFile(selectedFile);
       setUploadResult(null);
@@ -264,7 +212,7 @@ export default function InventoryUploadPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {previewData.slice(0, 10).map((row, index) => (
+                  {previewData.slice(0, FILE_UPLOAD.MAX_PREVIEW_ROWS).map((row, index) => (
                     <TableRow key={index} className="border-gray-800 hover:bg-gray-800/50">
                       <TableCell className="font-medium text-gray-100">{row.make}</TableCell>
                       <TableCell className="text-gray-300">{row.model}</TableCell>
@@ -278,9 +226,9 @@ export default function InventoryUploadPage() {
                   ))}
                 </TableBody>
               </Table>
-              {previewData.length > 10 && (
+              {previewData.length > FILE_UPLOAD.MAX_PREVIEW_ROWS && (
                 <p className="text-sm text-gray-400 mt-2">
-                  Showing first 10 rows of {previewData.length} total
+                  Showing first {FILE_UPLOAD.MAX_PREVIEW_ROWS} rows of {previewData.length} total
                 </p>
               )}
             </ScrollArea>

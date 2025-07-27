@@ -1,4 +1,5 @@
 import { supabase, type Inventory } from './supabase';
+import { inventoryValidation, type ValidationResult } from './inventory-validation';
 
 export type InventoryUploadResult = {
   successCount: number;
@@ -40,54 +41,25 @@ export const inventoryApi = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
+    // Validate inventory rows
+    const validationResult: ValidationResult = inventoryValidation.validateInventoryRows(inventoryRows);
+    
     const result: InventoryUploadResult = {
       successCount: 0,
-      errorCount: 0,
-      errors: []
+      errorCount: validationResult.errors.length,
+      errors: validationResult.errors
     };
 
-    // Validate each row
-    const validRows: any[] = [];
-    
-    inventoryRows.forEach((row, index) => {
-      const rowNumber = index + 1; // 1-based row numbers for user display
-      
-      // Validate required fields
-      if (!row.make || !row.make.trim()) {
-        result.errorCount++;
-        result.errors.push({ row: rowNumber, error: 'Missing make' });
-        return;
-      }
-      
-      if (!row.model || !row.model.trim()) {
-        result.errorCount++;
-        result.errors.push({ row: rowNumber, error: 'Missing model' });
-        return;
-      }
-      
-      if (!row.year || isNaN(row.year) || row.year < 1900 || row.year > new Date().getFullYear() + 1) {
-        result.errorCount++;
-        result.errors.push({ row: rowNumber, error: 'Invalid year' });
-        return;
-      }
-      
-      if (!row.price || isNaN(row.price) || row.price <= 0) {
-        result.errorCount++;
-        result.errors.push({ row: rowNumber, error: 'Invalid price' });
-        return;
-      }
-
-      // Add dealership_id to valid rows
-      validRows.push({
-        ...row,
-        dealership_id: user.id,
-        status: 'active'
-      });
-    });
-
-    if (validRows.length === 0) {
+    if (validationResult.validRows.length === 0) {
       return result;
     }
+
+    // Add dealership_id to valid rows
+    const validRows = validationResult.validRows.map(row => ({
+      ...row,
+      dealership_id: user.id,
+      status: 'active'
+    }));
 
     // Insert valid rows
     const { data, error } = await supabase

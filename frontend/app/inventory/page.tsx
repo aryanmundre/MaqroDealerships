@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { inventoryApi } from '@/lib/inventory-api';
 import { type Inventory } from '@/lib/supabase';
+import { INVENTORY_STATUS, UI } from '@/lib/constants';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function InventoryPage() {
@@ -65,11 +66,11 @@ export default function InventoryPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active':
+      case INVENTORY_STATUS.ACTIVE:
         return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'sold':
+      case INVENTORY_STATUS.SOLD:
         return 'bg-red-500/20 text-red-400 border-red-500/30';
-      case 'pending':
+      case INVENTORY_STATUS.PENDING:
         return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
       default:
         return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
@@ -80,7 +81,7 @@ export default function InventoryPage() {
     return (
       <div className="space-y-8">
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <div className={`animate-spin rounded-full border-b-2 border-blue-500 ${UI.LOADING_SPINNER_SIZE}`}></div>
         </div>
       </div>
     );
@@ -125,7 +126,7 @@ export default function InventoryPage() {
               <div>
                 <p className="text-sm text-gray-400">Active</p>
                 <p className="text-2xl font-bold text-gray-100">
-                  {inventory.filter(item => item.status === 'active').length}
+                  {inventory.filter(item => item.status === INVENTORY_STATUS.ACTIVE).length}
                 </p>
               </div>
             </div>
@@ -138,7 +139,7 @@ export default function InventoryPage() {
               <div>
                 <p className="text-sm text-gray-400">Sold</p>
                 <p className="text-2xl font-bold text-gray-100">
-                  {inventory.filter(item => item.status === 'sold').length}
+                  {inventory.filter(item => item.status === INVENTORY_STATUS.SOLD).length}
                 </p>
               </div>
             </div>
@@ -151,7 +152,7 @@ export default function InventoryPage() {
               <div>
                 <p className="text-sm text-gray-400">Pending</p>
                 <p className="text-2xl font-bold text-gray-100">
-                  {inventory.filter(item => item.status === 'pending').length}
+                  {inventory.filter(item => item.status === INVENTORY_STATUS.PENDING).length}
                 </p>
               </div>
             </div>
@@ -214,7 +215,7 @@ export default function InventoryPage() {
                     <TableRow 
                       key={item.id} 
                       className="border-gray-800 hover:bg-gray-800/50 transition-all duration-200"
-                      style={{ animationDelay: `${index * 50}ms` }}
+                      style={{ animationDelay: `${index * UI.ANIMATION_DELAY}ms` }}
                     >
                       <TableCell>
                         <div>
