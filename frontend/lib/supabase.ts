@@ -28,6 +28,21 @@ export type Lead = {
   user_id: string; // Foreign key to auth.users
 };
 
+export type Inventory = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  make: string;
+  model: string;
+  year: number;
+  price: number;
+  mileage?: number;
+  description?: string;
+  features?: string;
+  dealership_id: string; // Foreign key to auth.users
+  status: 'active' | 'sold' | 'pending';
+};
+
 // Helper function to check if user is logged in
 export const isUserLoggedIn = async () => {
   const { data: { session } } = await supabase.auth.getSession();

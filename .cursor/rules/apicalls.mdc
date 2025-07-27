@@ -1,7 +1,11 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 NEVER run sensitive API calls from the frontend
 No secrets in .tsx or client-side code
+“When possible, try to reuse or refactor existing functionality rather than adding new code”
+
+“Never introduce a new technology without asking first. (e.g., changing from react to angular)”
+“Make the minimal set of changes to achieve intended prompt”

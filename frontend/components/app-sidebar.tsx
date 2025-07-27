@@ -1,6 +1,6 @@
 "use client"
 
-import { BarChart3, MessageSquare, Settings, LayoutTemplateIcon as Template, Home } from 'lucide-react'
+import { BarChart3, MessageSquare, Settings, LayoutTemplateIcon as Template, Home, Upload, Car } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +24,16 @@ const items = [
     title: "Conversations",
     url: "/conversations",
     icon: MessageSquare,
+  },
+  {
+    title: "Inventory",
+    url: "/inventory",
+    icon: Car,
+  },
+  {
+    title: "Upload Inventory",
+    url: "/inventory/upload",
+    icon: Upload,
   },
   {
     title: "Template Manager",

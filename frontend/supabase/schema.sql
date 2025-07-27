@@ -13,6 +13,22 @@ CREATE TABLE IF NOT EXISTS leads (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
+-- Create inventory table
+CREATE TABLE IF NOT EXISTS inventory (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  make TEXT NOT NULL,
+  model TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  mileage INTEGER,
+  description TEXT,
+  features TEXT,
+  dealership_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'sold', 'pending'))
+);
+
 -- Create user_profiles table
 CREATE TABLE IF NOT EXISTS user_profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -29,10 +45,14 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 CREATE INDEX IF NOT EXISTS leads_user_id_idx ON leads(user_id);
 CREATE INDEX IF NOT EXISTS leads_status_idx ON leads(status);
 CREATE INDEX IF NOT EXISTS user_profiles_user_id_idx ON user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS inventory_dealership_id_idx ON inventory(dealership_id);
+CREATE INDEX IF NOT EXISTS inventory_status_idx ON inventory(status);
+CREATE INDEX IF NOT EXISTS inventory_make_model_idx ON inventory(make, model);
 
 -- Enable Row Level Security
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies for leads (if they exist)
 DROP POLICY IF EXISTS "Users can view their own leads" ON leads;
@@ -64,6 +84,37 @@ CREATE POLICY "Users can delete their own leads"
   ON leads
   FOR DELETE
   USING (auth.uid() = user_id);
+
+-- Drop existing policies for inventory (if they exist)
+DROP POLICY IF EXISTS "Dealerships can view their own inventory" ON inventory;
+DROP POLICY IF EXISTS "Dealerships can insert their own inventory" ON inventory;
+DROP POLICY IF EXISTS "Dealerships can update their own inventory" ON inventory;
+DROP POLICY IF EXISTS "Dealerships can delete their own inventory" ON inventory;
+
+-- Create policies for inventory
+-- 1. Dealerships can view their own inventory
+CREATE POLICY "Dealerships can view their own inventory"
+  ON inventory
+  FOR SELECT
+  USING (auth.uid() = dealership_id);
+
+-- 2. Dealerships can insert their own inventory
+CREATE POLICY "Dealerships can insert their own inventory"
+  ON inventory
+  FOR INSERT
+  WITH CHECK (auth.uid() = dealership_id);
+
+-- 3. Dealerships can update their own inventory
+CREATE POLICY "Dealerships can update their own inventory"
+  ON inventory
+  FOR UPDATE
+  USING (auth.uid() = dealership_id);
+
+-- 4. Dealerships can delete their own inventory
+CREATE POLICY "Dealerships can delete their own inventory"
+  ON inventory
+  FOR DELETE
+  USING (auth.uid() = dealership_id);
 
 -- Drop existing policies for user_profiles (if they exist)
 DROP POLICY IF EXISTS "Users can view their own profile" ON user_profiles;
@@ -107,10 +158,17 @@ $$ language 'plpgsql';
 
 -- Drop existing trigger if it exists
 DROP TRIGGER IF EXISTS update_user_profiles_updated_at ON user_profiles;
+DROP TRIGGER IF EXISTS update_inventory_updated_at ON inventory;
 
 -- Create trigger for user_profiles
 CREATE TRIGGER update_user_profiles_updated_at 
     BEFORE UPDATE ON user_profiles 
+    FOR EACH ROW 
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Create trigger for inventory
+CREATE TRIGGER update_inventory_updated_at 
+    BEFORE UPDATE ON inventory 
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 

@@ -1,0 +1,364 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
+import { Upload, FileText, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { inventoryApi, type InventoryRow, type InventoryUploadResult } from '@/lib/inventory-api';
+import { useToast } from '@/components/ui/use-toast';
+
+export default function InventoryUploadPage() {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewData, setPreviewData] = useState<InventoryRow[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<InventoryUploadResult | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const { toast } = useToast();
+  const router = useRouter();
+
+  const parseFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      
+      if (file.name.endsWith('.csv')) {
+        try {
+          Papa.parse(content as any, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results: Papa.ParseResult<any>) => {
+              const parsedData = results.data as any[];
+              const mappedData = mapColumns(parsedData);
+              setPreviewData(mappedData);
+            }
+          });
+        } catch (error) {
+          toast({
+            title: "Error parsing CSV",
+            description: error instanceof Error ? error.message : "Failed to parse CSV file",
+            variant: "destructive"
+          });
+        }
+      } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        try {
+          const workbook = XLSX.read(content, { type: 'binary' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+          const mappedData = mapColumns(jsonData);
+          setPreviewData(mappedData);
+        } catch (error) {
+          toast({
+            title: "Error parsing Excel file",
+            description: "Please check the file format and try again.",
+            variant: "destructive"
+          });
+        }
+      }
+    };
+    
+    reader.readAsBinaryString(file);
+  }, [toast]);
+
+  const mapColumns = (data: any[]): InventoryRow[] => {
+    return data.map(row => {
+      // Try to map common column names
+      const make = row.make || row.Make || row.MAKE || row['Make'] || '';
+      const model = row.model || row.Model || row.MODEL || row['Model'] || '';
+      const year = parseInt(row.year || row.Year || row.YEAR || row['Year'] || '0');
+      const price = parseFloat(row.price || row.Price || row.PRICE || row['Price'] || '0');
+      const mileage = row.mileage ? parseInt(row.mileage) : undefined;
+      const description = row.description || row.Description || row.DESC || row['Description'] || '';
+      const features = row.features || row.Features || row.FEATURES || row['Features'] || '';
+
+      return {
+        make: make.toString(),
+        model: model.toString(),
+        year,
+        price,
+        mileage,
+        description: description.toString(),
+        features: features.toString()
+      };
+    });
+  };
+
+  const handleFileSelect = (selectedFile: File) => {
+    if (selectedFile.type === 'text/csv' || 
+        selectedFile.name.endsWith('.xlsx') || 
+        selectedFile.name.endsWith('.xls')) {
+      setFile(selectedFile);
+      parseFile(selectedFile);
+      setUploadResult(null);
+    } else {
+      toast({
+        title: "Invalid file type",
+        description: "Please select a CSV or Excel file.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile) {
+      handleFileSelect(droppedFile);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!previewData.length) {
+      toast({
+        title: "No data to upload",
+        description: "Please select a file with inventory data.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const result = await inventoryApi.uploadInventory(previewData);
+      setUploadResult(result);
+      
+      if (result.successCount > 0) {
+        toast({
+          title: "Upload successful",
+          description: `${result.successCount} vehicles uploaded successfully.`,
+        });
+      }
+      
+      if (result.errorCount > 0) {
+        toast({
+          title: "Upload completed with errors",
+          description: `${result.errorCount} rows failed to upload.`,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "An error occurred during upload.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const resetUpload = () => {
+    setFile(null);
+    setPreviewData([]);
+    setUploadResult(null);
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Header Section */}
+      <div className="bg-gradient-to-r from-gray-900/50 to-gray-800/30 rounded-xl p-8 border border-gray-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-100 mb-2">Upload Inventory</h2>
+            <p className="text-gray-400 text-lg">Upload your vehicle inventory to personalize AI responses</p>
+          </div>
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/inventory')}
+            className="border-gray-700 text-gray-300 hover:bg-gray-800"
+          >
+            Back to Inventory
+          </Button>
+        </div>
+      </div>
+
+      {/* File Upload Section */}
+      <Card className="bg-gray-900/50 border-gray-800">
+        <CardHeader>
+          <CardTitle className="text-gray-100">Upload Inventory File</CardTitle>
+          <CardDescription className="text-gray-400">
+            Upload a CSV or Excel file with your vehicle inventory. 
+            Supported columns: make, model, year, price, mileage, description, features
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              isDragOver 
+                ? 'border-blue-500 bg-blue-500/10' 
+                : 'border-gray-700 hover:border-gray-600'
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <Upload className="mx-auto h-12 w-12 text-gray-500 mb-4" />
+            <p className="text-lg font-medium text-gray-100 mb-2">
+              {file ? file.name : 'Drag and drop your file here'}
+            </p>
+            <p className="text-sm text-gray-400 mb-4">
+              or click to browse
+            </p>
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={(e) => {
+                const selectedFile = e.target.files?.[0];
+                if (selectedFile) handleFileSelect(selectedFile);
+              }}
+              className="hidden"
+              id="file-upload"
+            />
+            <label htmlFor="file-upload">
+              <Button asChild className="bg-blue-600 hover:bg-blue-700">
+                <span>Choose File</span>
+              </Button>
+            </label>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Preview Section */}
+      {previewData.length > 0 && (
+        <Card className="bg-gray-900/50 border-gray-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-gray-100">
+              <FileText className="h-5 w-5" />
+              Preview ({previewData.length} vehicles)
+            </CardTitle>
+            <CardDescription className="text-gray-400">
+              Review your data before uploading
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-96">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-gray-800">
+                    <TableHead className="text-gray-300">Make</TableHead>
+                    <TableHead className="text-gray-300">Model</TableHead>
+                    <TableHead className="text-gray-300">Year</TableHead>
+                    <TableHead className="text-gray-300">Price</TableHead>
+                    <TableHead className="text-gray-300">Mileage</TableHead>
+                    <TableHead className="text-gray-300">Description</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {previewData.slice(0, 10).map((row, index) => (
+                    <TableRow key={index} className="border-gray-800 hover:bg-gray-800/50">
+                      <TableCell className="font-medium text-gray-100">{row.make}</TableCell>
+                      <TableCell className="text-gray-300">{row.model}</TableCell>
+                      <TableCell className="text-gray-300">{row.year}</TableCell>
+                      <TableCell className="text-gray-300">${row.price.toLocaleString()}</TableCell>
+                      <TableCell className="text-gray-300">{row.mileage ? row.mileage.toLocaleString() : '-'}</TableCell>
+                      <TableCell className="max-w-xs truncate text-gray-300">
+                        {row.description || '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {previewData.length > 10 && (
+                <p className="text-sm text-gray-400 mt-2">
+                  Showing first 10 rows of {previewData.length} total
+                </p>
+              )}
+            </ScrollArea>
+            
+            <div className="flex gap-2 mt-4">
+              <Button 
+                onClick={handleUpload} 
+                disabled={isUploading}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+              >
+                {isUploading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Upload Inventory
+                  </>
+                )}
+              </Button>
+              <Button variant="outline" onClick={resetUpload} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+                Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Upload Results */}
+      {uploadResult && (
+        <Card className="bg-gray-900/50 border-gray-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-gray-100">
+              {uploadResult.errorCount === 0 ? (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-yellow-500" />
+              )}
+              Upload Results
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <Badge variant="default" className="bg-green-500">
+                  {uploadResult.successCount} vehicles uploaded
+                </Badge>
+                {uploadResult.errorCount > 0 && (
+                  <Badge variant="destructive">
+                    {uploadResult.errorCount} rows failed
+                  </Badge>
+                )}
+              </div>
+
+              {uploadResult.errors.length > 0 && (
+                <Alert className="border-red-500/30 bg-red-500/10">
+                  <AlertCircle className="h-4 w-4 text-red-400" />
+                  <AlertDescription className="text-gray-300">
+                    <div className="space-y-2">
+                      <p className="font-medium text-gray-100">Errors found:</p>
+                      <div className="space-y-1">
+                        {uploadResult.errors.map((error, index) => (
+                          <div key={index} className="flex items-center gap-2 text-sm">
+                            <X className="h-3 w-3 text-red-400" />
+                            Row {error.row}: {error.error}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+} 
