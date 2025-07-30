@@ -11,45 +11,22 @@ import Link from "next/link"
 // TODO: Replace with actual data from API based on lead ID
 const leadData = {
   id: 1,
-  name: "Sarah Johnson",
-  car: "2019 Honda Civic",
-  status: "warm",
-  phone: "+1 (555) 123-4567",
-  email: "sarah.johnson@email.com",
+  name: "Krishna",
+  car: "",
+  status: "new",
+  phone: "+19146022064",
+  email: "",
 }
 
 // TODO: Replace with actual conversation data from API
 const messages = [
   {
     id: 1,
-    sender: "lead",
-    content: "Hi, I'm interested in the 2019 Honda Civic you have listed. Is it still available?",
-    timestamp: "2 hours ago",
-    type: "message",
-  },
-  {
-    id: 2,
     sender: "agent",
-    content:
-      "Hi Sarah! Yes, the 2019 Honda Civic is still available. It's in excellent condition with only 45,000 miles. Would you like to schedule a test drive?",
-    timestamp: "1 hour ago",
-    type: "message",
-  },
-  {
-    id: 3,
-    sender: "lead",
-    content: "That sounds great! What's your availability this week?",
-    timestamp: "45 minutes ago",
-    type: "message",
-  },
-  {
-    id: 4,
-    sender: "ai",
-    content:
-      "I have availability on Tuesday at 2 PM, Wednesday at 10 AM, or Friday at 3 PM. Which time works best for you?",
+    content: "Hi Krishna, this is your dealership agent!",
     timestamp: "Just now",
-    type: "suggestion",
-    approved: false,
+    type: "message",
+    // no 'approved' property for normal messages
   },
 ]
 
@@ -64,6 +41,9 @@ const statusColors = {
 export default function ConversationDetail({ params }: { params: { id: string } }) {
   const [customMessage, setCustomMessage] = useState("")
   const [messageList, setMessageList] = useState(messages)
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [sendSuccess, setSendSuccess] = useState(false)
 
   // TODO: Implement API call to approve AI suggestion
   const handleApprove = (messageId: number) => {
@@ -82,21 +62,42 @@ export default function ConversationDetail({ params }: { params: { id: string } 
   }
 
   // TODO: Implement API call to send custom message
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!customMessage.trim()) return
-
-    const newMessage = {
-      id: Date.now(),
-      sender: "agent" as const,
-      content: customMessage,
-      timestamp: "Just now",
-      type: "message" as const,
+    setSending(true)
+    setSendError(null)
+    setSendSuccess(false)
+    
+    const messageToSend = customMessage.trim()
+    
+    try {
+      const res = await fetch("/api/send-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: leadData.phone, body: messageToSend }),
+      })
+      
+      if (!res.ok) {
+        const data = await res.json()
+        setSendError(data.error || "Failed to send message")
+      } else {
+        setSendSuccess(true)
+        // Only add to UI and clear input after successful API call
+        const newMessage = {
+          id: Date.now(),
+          sender: "agent" as const,
+          content: messageToSend,
+          timestamp: "Just now",
+          type: "message" as const,
+        }
+        setMessageList((prev) => [...prev, newMessage])
+        setCustomMessage("")
+      }
+    } catch (err) {
+      setSendError("Failed to send message")
+    } finally {
+      setSending(false)
     }
-
-    setMessageList((prev) => [...prev, newMessage])
-    setCustomMessage("")
-    // TODO: API call to send custom message
-    console.log("Sending custom message:", customMessage)
   }
 
   return (
@@ -166,7 +167,7 @@ export default function ConversationDetail({ params }: { params: { id: string } 
                         </div>
                         <p className="text-sm">{message.content}</p>
 
-                        {message.type === "suggestion" && !message.approved && (
+                        {message.type === "suggestion" && "approved" in message && !message.approved && (
                           <div className="flex gap-2 mt-3">
                             <Button
                               size="sm"
@@ -205,6 +206,12 @@ export default function ConversationDetail({ params }: { params: { id: string } 
                       <Send className="w-4 h-4" />
                     </Button>
                   </div>
+                  {sendSuccess && (
+                    <p className="text-green-400 text-sm mt-2">Message sent successfully!</p>
+                  )}
+                  {sendError && (
+                    <p className="text-red-400 text-sm mt-2">{sendError}</p>
+                  )}
                 </div>
               </div>
             </CardContent>
