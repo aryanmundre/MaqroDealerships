@@ -26,6 +26,7 @@ export type Lead = {
   phone?: string;
   message?: string;
   user_id: string; // Foreign key to auth.users
+  conversations?: Messages[];
 };
 
 export type Inventory = {
@@ -42,6 +43,14 @@ export type Inventory = {
   dealership_id: string; // Foreign key to auth.users
   status: 'active' | 'sold' | 'pending';
 };
+
+export type Messages ={
+  id: string;
+  created_at: string;
+  message: string;
+  sender: 'customer' | 'agent'
+  lead_id: string;
+}
 
 // Helper function to check if user is logged in
 export const isUserLoggedIn = async () => {
