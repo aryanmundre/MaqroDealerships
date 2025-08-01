@@ -11,7 +11,7 @@ This module provides advanced RAG capabilities including:
 from typing import List, Dict, Any, Optional, Tuple
 from maqro_rag import VehicleRetriever
 from maqro_backend.services.ai_services import analyze_conversation_context
-from maqro_backend.db.models.conversation import Conversation
+# from maqro_backend.db.models.conversation import Conversation  # Removed - using raw SQL now
 import logging
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ class EnhancedRAGService:
     def search_vehicles_with_context(
         self, 
         query: str, 
-        conversations: List[Conversation],
+        conversations: List[Dict],
         top_k: int = 5
     ) -> List[Dict[str, Any]]:
         """
@@ -228,7 +228,7 @@ class EnhancedRAGService:
         self,
         query: str,
         vehicles: List[Dict[str, Any]],
-        conversations: List[Conversation],
+        conversations: List[Dict],
         lead_name: str = None
     ) -> Dict[str, Any]:
         """

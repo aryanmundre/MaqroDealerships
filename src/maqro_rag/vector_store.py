@@ -53,11 +53,14 @@ class FAISSVectorStore(VectorStore):
         if self.index is None:
             raise ValueError("FAISS index not initialized")
         
+        # Ensure vectors are in the correct format for FAISS
+        vectors = np.array(vectors, dtype=np.float32)
+        
         # Normalize vectors for cosine similarity
         faiss.normalize_L2(vectors)
         
         # Add to index
-        self.index.add(vectors.astype('float32'))
+        self.index.add(vectors)
         self.metadata.extend(metadata)
         
         logger.info(f"Added {len(vectors)} vectors to FAISS index")
@@ -67,11 +70,14 @@ class FAISSVectorStore(VectorStore):
         if self.index is None:
             raise ValueError("FAISS index not initialized")
         
+        # Ensure query vector is in the correct format for FAISS
+        query_vector = np.array(query_vector, dtype=np.float32)
+        
         # Normalize query vector
         faiss.normalize_L2(query_vector)
         
         # Search
-        scores, indices = self.index.search(query_vector.astype('float32'), top_k)
+        scores, indices = self.index.search(query_vector, top_k)
         
         # Get metadata for results
         results_metadata = [self.metadata[i] for i in indices[0] if i < len(self.metadata)]

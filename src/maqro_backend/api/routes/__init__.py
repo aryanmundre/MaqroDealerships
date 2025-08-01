@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .import health, leads, conversation, ai
+from .import health, leads, conversation, ai, inventory
 
 api_router = APIRouter()
 
@@ -7,4 +7,5 @@ api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(leads.router, tags=["leads"])
 api_router.include_router(conversation.router, tags=["conversations"])
+api_router.include_router(inventory.router, tags=["inventory"])
 api_router.include_router(ai.router, tags=["ai"]) 

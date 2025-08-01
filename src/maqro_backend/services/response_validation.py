@@ -5,7 +5,7 @@ This module provides validation and quality assurance for AI responses,
 including content filtering, response quality scoring, and fallback responses.
 """
 
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Tuple
 import re
 import logging
 
@@ -42,7 +42,7 @@ class ResponseValidator:
         self, 
         response_data: Dict[str, Any], 
         original_query: str
-    ) -> Tuple[bool, Dict[str, Any], Optional[str]]:
+    ) -> Tuple[bool, Dict[str, Any], str | None]:
         """
         Validate AI response and return validation results
         
@@ -143,7 +143,7 @@ class ResponseValidator:
     def enhance_response_quality(
         self, 
         response_data: Dict[str, Any], 
-        customer_name: str = None
+        customer_name: str | None = None
     ) -> Dict[str, Any]:
         """
         Enhance response quality by adding missing elements
@@ -307,7 +307,7 @@ class ResponseQualityMonitor:
             'response_volume': len(recent_history)
         }
     
-    def _calculate_trend(self, history: List[Dict[str, Any]]) -> str:
+    def _calculate_trend(self, history: list[Dict[str, Any]]) -> str:
         """Calculate quality trend"""
         if len(history) < 2:
             return 'insufficient_data'
@@ -328,7 +328,7 @@ class ResponseQualityMonitor:
         else:
             return 'stable'
     
-    def _get_common_issues(self) -> List[str]:
+    def _get_common_issues(self) -> list[str]:
         """Get most common quality issues"""
         all_issues = []
         for record in self.quality_history:
@@ -340,4 +340,4 @@ class ResponseQualityMonitor:
         
         # Return top 3 most common issues
         sorted_issues = sorted(issue_counts.items(), key=lambda x: x[1], reverse=True)
-        return [issue for issue, count in sorted_issues[:3]] 
+        return [issue for issue, count in sorted_issues[:3]]

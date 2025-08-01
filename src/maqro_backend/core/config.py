@@ -2,11 +2,10 @@ import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    # Use lightweight SQLite database by default for local development.
-    # Override with real Postgres URL in the environment once you are ready
-    # (e.g. export DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/maqro_dealership").
-    database_url: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./dev.db")
-    
+    # Database URL - will use SUPABASE_DB_URL if available, fallback to DATABASE_URL
+    database_url: str | None = None
+    supabase_db_url: str | None = None
+
     rag_config_path: str = "config.yaml"
     rag_index_name: str = "vehicle_index"
 
@@ -15,6 +14,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"  # Allow extra fields in .env file
 
 
 settings = Settings()

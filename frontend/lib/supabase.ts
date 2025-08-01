@@ -26,7 +26,7 @@ export type Lead = {
   phone?: string;
   message?: string;
   user_id: string; // Foreign key to auth.users
-  conversations?: Messages[];
+  conversations?: Conversation[];
 };
 
 export type Inventory = {
@@ -44,7 +44,7 @@ export type Inventory = {
   status: 'active' | 'sold' | 'pending';
 };
 
-export type Messages ={
+export type Conversation = {
   id: string;
   created_at: string;
   message: string;
@@ -62,4 +62,4 @@ export const isUserLoggedIn = async () => {
 export const getCurrentUser = async () => {
   const { data: { user } } = await supabase.auth.getUser();
   return user;
-}; 
+};

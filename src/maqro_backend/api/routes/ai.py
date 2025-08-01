@@ -15,6 +15,10 @@ from ...services.ai_services import (
     generate_ai_response_text,
     generate_contextual_ai_response
 )
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -23,7 +27,7 @@ enhanced_rag_service = None
 @router.post("/conversations/{lead_id}/ai-response")
 async def generate_conversation_ai_response(
     lead_id: int, 
-    request_data: AIResponseRequest = None,
+    request_data: AIResponseRequest | None = None,
     db: AsyncSession = Depends(get_db_session),
     enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services)
 ):
@@ -31,7 +35,7 @@ async def generate_conversation_ai_response(
     Generate AI response based on complete conversation history and save it
     This endpoint uses the FULL conversation history to generate contextually aware responses.
     """
-    print(f"Generating AI response for lead {lead_id}")
+    logger.info(f"Generating AI response for lead {lead_id}")
     
     # Check if lead exists
     lead = await get_lead_by_id(session=db, lead_id=lead_id)
@@ -69,27 +73,15 @@ async def generate_conversation_ai_response(
         # Generate AI response using full conversation context
         ai_response_text = enhanced_response['response_text']
         
-        # Calculate response latency to previous customer message
-        prev_customer_time = None
-        for conv in reversed(all_conversations):
-            if conv.sender == "customer":
-                prev_customer_time = conv.created_at
-                break
-
-        response_time_sec = None
-        if prev_customer_time is not None:
-            response_time_sec = int((datetime.now(pytz.utc) - prev_customer_time).total_seconds())
-
-        # Save AI response to database, capturing response latency
+        # Save AI response to database
         ai_response = await create_conversation(
             session=db,
             lead_id=lead_id,
             message=ai_response_text,
-            sender="agent",
-            response_time_sec=response_time_sec
+            sender="agent"
         )
         
-        print(f"AI response generated and saved for lead {lead.name}")
+        logger.info(f"AI response generated and saved for lead {lead.name}")
         
         return {
             "response_id": ai_response.id,
@@ -107,7 +99,7 @@ async def generate_conversation_ai_response(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error generating AI response: {e}")
+        logger.error(f"Error generating AI response: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate AI response")
 
 
@@ -119,7 +111,7 @@ async def generate_general_ai_response(
     """
     Generate AI response based on general text query (no conversation context)
     """
-    print(f"Generating general AI response for query: {request_data.query}")
+    logger.info(f"Generating general AI response for query: {request_data.query}")
     
     try:   
         vehicles  = enhanced_rag_service.search_vehicles_with_context(
@@ -146,7 +138,7 @@ async def generate_general_ai_response(
         }
         
     except Exception as e:
-        print(f"Error generating general AI response: {e}")
+        logger.error(f"Error generating general AI response: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate AI response") 
     
 @router.post("/ai-response/enhanced")
@@ -157,7 +149,7 @@ async def generate_enhanced_ai_response(
     """
     Generate enhanced AI response with advanced features
     """
-    print(f"Generating enhanced AI response for query: {request_data.query}")
+    logger.info(f"Generating enhanced AI response for query: {request_data.query}")
     
     try:
         # Use enhanced RAG system with advanced features
@@ -191,5 +183,5 @@ async def generate_enhanced_ai_response(
         }
         
     except Exception as e:
-        print(f"Error generating enhanced AI response: {e}")
+        logger.error(f"Error generating enhanced AI response: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate enhanced AI response")

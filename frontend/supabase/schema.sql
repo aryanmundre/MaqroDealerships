@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS inventory (
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'sold', 'pending'))
 );
 
+-- Create conversations table
+CREATE TABLE IF NOT EXISTS conversations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  sender TEXT NOT NULL CHECK (sender IN ('customer', 'agent'))
+);
+
 -- Create user_profiles table
 CREATE TABLE IF NOT EXISTS user_profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -48,11 +57,13 @@ CREATE INDEX IF NOT EXISTS user_profiles_user_id_idx ON user_profiles(user_id);
 CREATE INDEX IF NOT EXISTS inventory_dealership_id_idx ON inventory(dealership_id);
 CREATE INDEX IF NOT EXISTS inventory_status_idx ON inventory(status);
 CREATE INDEX IF NOT EXISTS inventory_make_model_idx ON inventory(make, model);
+CREATE INDEX IF NOT EXISTS conversations_lead_id_idx ON conversations(lead_id);
 
 -- Enable Row Level Security
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies for leads (if they exist)
 DROP POLICY IF EXISTS "Users can view their own leads" ON leads;
@@ -147,6 +158,15 @@ CREATE POLICY "Users can delete their own profile"
   FOR DELETE
   USING (auth.uid() = user_id);
 
+-- Policies for conversations
+DROP POLICY IF EXISTS "Users can manage conversations for their leads" ON conversations;
+
+CREATE POLICY "Users can manage conversations for their leads"
+  ON conversations
+  FOR ALL
+  USING (auth.uid() = (SELECT user_id FROM leads WHERE id = conversations.lead_id))
+  WITH CHECK (auth.uid() = (SELECT user_id FROM leads WHERE id = conversations.lead_id));
+
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -211,4 +231,4 @@ BEGIN
     LIMIT 1;
   END IF;
 END
-$$; 
+$$;

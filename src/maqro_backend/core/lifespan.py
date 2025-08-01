@@ -1,8 +1,10 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from loguru import logger
 from maqro_rag import Config, VehicleRetriever, EnhancedRAGService
 from maqro_backend.core.config import settings
-from maqro_backend.db.session import create_tables
+# from maqro_backend.db.session import create_tables  # Removed - tables managed by Supabase
 
 
 # Global variable to store retriever  
@@ -18,24 +20,53 @@ async def lifespan(app: FastAPI):
     """
 
     global retriever, enhanced_rag_service
-    print("Starting up Maqro API...")
+    logger.info("Starting up Maqro API...")
     
     # 1. Load RAG system for vehicle search
     config = Config.from_yaml(settings.rag_config_path)
     retriever = VehicleRetriever(config)
-    retriever.load_index(settings.rag_index_name)
+    
+    # Initialize RAG retriever with proper error handling
+    index_path = settings.rag_index_name
+    inventory_file = "sample_inventory.csv"  # Default inventory file
+    
+    # Check if the FAISS index and metadata files exist
+    if not (os.path.exists(f"{index_path}.faiss") and os.path.exists(f"{index_path}.metadata")):
+        logger.warning(
+            f"Index '{index_path}.faiss' not found. Building it from '{inventory_file}'..."
+        )
+        if not os.path.exists(inventory_file):
+            logger.error(
+                f"Inventory file '{inventory_file}' not found. Cannot build index."
+            )
+            raise FileNotFoundError(f"Required inventory file '{inventory_file}' not found")
+        else:
+            try:
+                retriever.build_index(
+                    inventory_file=inventory_file, save_path=index_path
+                )
+                logger.info(f"Successfully built and saved index to '{index_path}'")
+            except Exception as e:
+                logger.error(f"Failed to build RAG index: {e}")
+                raise
+    else:
+        try:
+            retriever.load_index(index_path)
+            logger.info(f"Successfully loaded RAG index from '{index_path}'")
+        except Exception as e:
+            logger.error(f"Failed to load RAG index: {e}")
+            raise
     
     # 2. Load Enhanced RAG service
     enhanced_rag_service = EnhancedRAGService(retriever)
-    print("Enhanced RAG service loaded")
+    logger.info("Enhanced RAG service loaded")
 
-    # 3. Create database tables if they don't exist
-    await create_tables()
-    print("Database tables ready")
+    # 3. Database tables are managed by Supabase
+    logger.info("Database connection ready (tables managed by Supabase)")
     
     yield
     
-    print("Shutting down...")
+    logger.info("Shutting down...")
 
 
 def get_retriever() -> VehicleRetriever:

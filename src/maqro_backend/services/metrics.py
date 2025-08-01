@@ -1,6 +1,6 @@
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from maqro_backend.db.models.conversation import Conversation
+# from maqro_backend.db.models.conversation import Conversation  # Removed - using raw SQL now
 
 
 async def get_average_agent_response_time(session: AsyncSession) -> float | None:
