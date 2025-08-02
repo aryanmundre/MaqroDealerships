@@ -245,7 +245,7 @@ class EnhancedRAGService:
             Dictionary containing response and metadata
         """
         # Analyze context
-        context_analysis = analyze_conversation_context(conversations)
+        context_analysis = self.analyze_conversation_context(conversations)
         
         # Generate response text
         response_text = self._generate_response_text(query, vehicles, context_analysis, lead_name)
