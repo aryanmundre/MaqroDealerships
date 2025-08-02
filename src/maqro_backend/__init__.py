@@ -1,3 +1,4 @@
 # Backend package for Maqro Dealership API 
-from maqro_backend.main import app
+from .main import app
 
+__all__ = ["app"]

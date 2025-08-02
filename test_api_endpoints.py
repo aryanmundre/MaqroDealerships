@@ -14,8 +14,8 @@ from dotenv import load_dotenv
 
 # Test configuration
 BASE_URL = "http://localhost:8000"  # Adjust if your server runs on different port
-API_PREFIX = "/api/routes"
-TEST_USER_ID = str(uuid.uuid4())
+API_PREFIX = "/api"
+TEST_USER_ID = 'a51056bf-444d-422a-ae61-13f385621cca'
 
 # Test data
 TEST_LEAD_DATA = {
@@ -129,7 +129,7 @@ async def test_leads_endpoints(client: httpx.AsyncClient, results: APITestResult
         
         # Test 3: Get specific lead
         if lead_id:
-            response = await client.get(f"/leads/{lead_id}", headers=headers)
+            response = await client.get(f"{API_PREFIX}/leads/{lead_id}", headers=headers)
             
             if response.status_code == 200:
                 lead_data = response.json()
@@ -189,7 +189,7 @@ async def test_conversations_endpoints(client: httpx.AsyncClient, results: APITe
             results.add_result("Add Message", False, f"Status code: {response.status_code}, Response: {response.text}")
         
         # Test 2: Get conversations for lead
-        response = await client.get(f"/leads/{lead_id}/conversations", headers=headers)
+        response = await client.get(f"{API_PREFIX}/leads/{lead_id}/conversations", headers=headers)
         
         if response.status_code == 200:
             conversations = response.json()
@@ -201,7 +201,7 @@ async def test_conversations_endpoints(client: httpx.AsyncClient, results: APITe
             results.add_result("Get Conversations", False, f"Status code: {response.status_code}")
         
         # Test 3: Get conversations with lead info
-        response = await client.get(f"/leads/{lead_id}/conversations-with-lead", headers=headers)
+        response = await client.get(f"{API_PREFIX}/leads/{lead_id}/conversations-with-lead", headers=headers)
         
         if response.status_code == 200:
             data = response.json()
@@ -249,7 +249,7 @@ async def test_inventory_endpoints(client: httpx.AsyncClient, results: APITestRe
         
         # Test 3: Get specific inventory item
         if inventory_id:
-            response = await client.get(f"/inventory/{inventory_id}", headers=headers)
+            response = await client.get(f"{API_PREFIX}/inventory/{inventory_id}", headers=headers)
             
             if response.status_code == 200:
                 item_data = response.json()
@@ -263,7 +263,7 @@ async def test_inventory_endpoints(client: httpx.AsyncClient, results: APITestRe
         # Test 4: Update inventory item
         if inventory_id:
             update_data = {"price": "67000.00", "mileage": 6000}
-            response = await client.put(f"/inventory/{inventory_id}", json=update_data, headers=headers)
+            response = await client.put(f"{API_PREFIX}/inventory/{inventory_id}", json=update_data, headers=headers)
             
             if response.status_code == 200:
                 updated_data = response.json()
@@ -276,7 +276,7 @@ async def test_inventory_endpoints(client: httpx.AsyncClient, results: APITestRe
         
         # Test 5: Delete inventory item
         if inventory_id:
-            response = await client.delete(f"/inventory/{inventory_id}", headers=headers)
+            response = await client.delete(f"{API_PREFIX}/inventory/{inventory_id}", headers=headers)
             
             if response.status_code == 200:
                 results.add_result("Delete Inventory", True, "Successfully deleted inventory")
@@ -301,7 +301,7 @@ async def test_cross_user_access(client: httpx.AsyncClient, results: APITestResu
     
     try:
         # Test 1: Try to access another user's lead
-        response = await client.get(f"/leads/{lead_id}", headers=other_headers)
+        response = await client.get(f"{API_PREFIX}/leads/{lead_id}", headers=other_headers)
         
         if response.status_code == 403:
             results.add_result("Cross-User Lead Access Denied", True, "Properly denied access to other user's lead")

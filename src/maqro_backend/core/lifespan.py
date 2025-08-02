@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from loguru import logger
 from maqro_rag import Config, VehicleRetriever, EnhancedRAGService
 from maqro_backend.core.config import settings
+from maqro_backend.services.ai_services import analyze_conversation_context
 # from maqro_backend.db.session import create_tables  # Removed - tables managed by Supabase
 
 
@@ -58,7 +59,10 @@ async def lifespan(app: FastAPI):
             raise
     
     # 2. Load Enhanced RAG service
-    enhanced_rag_service = EnhancedRAGService(retriever)
+    enhanced_rag_service = EnhancedRAGService(
+        retriever=retriever, 
+        analyze_conversation_context_func=analyze_conversation_context
+    )
     logger.info("Enhanced RAG service loaded")
 
     # 3. Database tables are managed by Supabase

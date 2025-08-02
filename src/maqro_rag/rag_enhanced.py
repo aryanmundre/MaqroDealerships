@@ -8,9 +8,9 @@ This module provides advanced RAG capabilities including:
 - Response quality scoring
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Callable
 from maqro_rag import VehicleRetriever
-from maqro_backend.services.ai_services import analyze_conversation_context
+# from maqro_backend.services.ai_services import analyze_conversation_context
 # from maqro_backend.db.models.conversation import Conversation  # Removed - using raw SQL now
 import logging
 
@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 class EnhancedRAGService:
     """Enhanced RAG service with advanced vehicle matching and response generation"""
     
-    def __init__(self, retriever: VehicleRetriever):
+    def __init__(self, retriever: VehicleRetriever, analyze_conversation_context_func: Callable):
         self.retriever = retriever
+        self.analyze_conversation_context = analyze_conversation_context_func
         self.response_templates = self._load_response_templates()
     
     def _load_response_templates(self) -> Dict[str, Dict[str, str]]:
@@ -72,7 +73,7 @@ class EnhancedRAGService:
             List of matching vehicles with enhanced context
         """
         # Analyze conversation context
-        context_analysis = analyze_conversation_context(conversations)
+        context_analysis = self.analyze_conversation_context(conversations)
         
         # Generate multiple search queries based on context
         search_queries = self._generate_search_queries(query, context_analysis)

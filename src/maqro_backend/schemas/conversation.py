@@ -17,9 +17,9 @@ class ConversationResponse(ConversationBase):
     lead_id: str = Field(..., description="Lead UUID as string")
     sender: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class ConversationCreate(ConversationBase):

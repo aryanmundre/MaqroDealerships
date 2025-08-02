@@ -13,6 +13,11 @@ import sys
 import uuid
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables FIRST, before any application imports
+# This ensures the database engine is created with the correct settings
+load_dotenv()
 
 # Add src to path so we can import maqro_backend
 sys.path.append(str(Path(__file__).parent / "src"))
@@ -20,9 +25,8 @@ sys.path.append(str(Path(__file__).parent / "src"))
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from dotenv import load_dotenv
 
-from maqro_backend.db.session import engine, get_db, SessionLocal
+from maqro_backend.db.session import engine, SessionLocal
 from maqro_backend.db.models import Lead, Conversation, Inventory
 from maqro_backend.schemas.lead import LeadCreate
 from maqro_backend.schemas.conversation import MessageCreate
@@ -140,7 +144,7 @@ async def test_lead_crud_operations(results: TestResults):
     
     try:
         # Get database session
-        async for session in get_db():
+        async with SessionLocal() as session:
             # Test 1: Create lead
             lead_create = LeadCreate(**TEST_LEAD_DATA)
             result = await create_lead_with_initial_message(
@@ -188,7 +192,7 @@ async def test_conversation_crud_operations(results: TestResults):
     print("\n🔍 Testing Conversation CRUD operations...")
     
     try:
-        async for session in get_db():
+        async with SessionLocal() as session:
             # First create a lead to associate conversations with
             lead_create = LeadCreate(**TEST_LEAD_DATA)
             lead_result = await create_lead_with_initial_message(
@@ -237,7 +241,7 @@ async def test_inventory_crud_operations(results: TestResults):
     print("\n🔍 Testing Inventory CRUD operations...")
     
     try:
-        async for session in get_db():
+        async with SessionLocal() as session:
             # Test 1: Create inventory item
             inventory = await create_inventory_item(
                 session=session,
@@ -276,7 +280,7 @@ async def test_uuid_validation(results: TestResults):
     print("\n🔍 Testing UUID validation...")
     
     try:
-        async for session in get_db():
+        async with SessionLocal() as session:
             # Test 1: Invalid UUID format
             invalid_lead = await get_lead_by_id(session=session, lead_id="invalid-uuid")
             if invalid_lead is None:
@@ -301,7 +305,7 @@ async def test_rls_compliance(results: TestResults):
     print("\n🔍 Testing Row Level Security compliance...")
     
     try:
-        async for session in get_db():
+        async with SessionLocal() as session:
             # Create leads for two different users
             user1_id = str(uuid.uuid4())
             user2_id = str(uuid.uuid4())
@@ -356,7 +360,7 @@ async def cleanup_test_data(results: TestResults):
     print("\n🧹 Cleaning up test data...")
     
     try:
-        async for session in get_db():
+        async with SessionLocal() as session:
             # Use the session to execute cleanup operations
             await session.execute(text("""
                 DELETE FROM conversations 
@@ -383,9 +387,6 @@ async def cleanup_test_data(results: TestResults):
 async def main():
     """Run all Supabase integration tests"""
     print("🚀 Starting Supabase Integration Tests...\n")
-    
-    # Load environment variables
-    load_dotenv()
     
     results = TestResults()
     

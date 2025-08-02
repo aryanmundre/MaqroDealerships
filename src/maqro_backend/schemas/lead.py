@@ -29,9 +29,9 @@ class LeadResponse(LeadBase):
     message: str | None = None
     user_id: str = Field(..., description="User UUID as string")
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class LeadUpdate(BaseModel):

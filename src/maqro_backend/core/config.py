@@ -11,10 +11,11 @@ class Settings(BaseSettings):
 
     title: str = "Maqro Dearlership API"
     version: str = "0.1.0"
+    model_config = {
+        "env_file": ".env",
+        "extra": "ignore"
+    }
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"  # Allow extra fields in .env file
 
 
 settings = Settings()

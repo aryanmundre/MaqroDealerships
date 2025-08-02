@@ -11,7 +11,7 @@ app = FastAPI(
 )
 
 # Include all API routes
-app.include_router(api_router, prefix="/api/routes")
+app.include_router(api_router, prefix="/api")
 
 # Root endpoint
 @app.get("/")
