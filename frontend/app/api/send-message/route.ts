@@ -10,43 +10,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing to or body' }, { status: 400 });
     }
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const from = process.env.TWILIO_PHONE_NUMBER;
+    const apiKey = process.env.VONAGE_API_KEY;
+    const apiSecret = process.env.VONAGE_API_SECRET;
+    const from = process.env.VONAGE_PHONE_NUMBER;
 
-    if (!accountSid || !authToken || !from) {
-      console.log('Twilio credentials not set');
-      return NextResponse.json({ error: 'Twilio credentials not set' }, { status: 500 });
+    if (!apiKey || !apiSecret || !from) {
+      console.log('Vonage credentials not set');
+      return NextResponse.json({ error: 'Vonage credentials not set' }, { status: 500 });
     }
 
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-    const params = new URLSearchParams();
-    params.append('To', to);
-    params.append('From', from);
-    params.append('Body', body);
+    console.log('Vonage SMS call:', { to, from, body });
 
-    console.log('Twilio API call:', { url, to, from, body });
+    // Send SMS using Vonage REST API
+    const url = 'https://rest.nexmo.com/sms/json';
+    const params = new URLSearchParams();
+    params.append('api_key', apiKey);
+    params.append('api_secret', apiSecret);
+    params.append('to', to);
+    params.append('from', from);
+    params.append('text', body);
 
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64'),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: params.toString(),
     });
 
-    console.log('Twilio response status:', res.status);
+    console.log('Vonage response status:', res.status);
 
     if (!res.ok) {
-      const error = await res.json();
-      console.log('Twilio error:', error);
-      return NextResponse.json({ error: error.message || 'Failed to send message' }, { status: 500 });
+      const error = await res.text();
+      console.log('Vonage error:', error);
+      return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
     }
 
     const data = await res.json();
-    console.log('Twilio success:', data);
-    return NextResponse.json({ success: true, sid: data.sid });
+    console.log('Vonage success:', data);
+    
+    if (data.messages && data.messages[0] && data.messages[0].status === '0') {
+      return NextResponse.json({ 
+        success: true, 
+        messageId: data.messages[0]['message-id'] 
+      });
+    } else {
+      const errorMessage = data.messages?.[0]?.['error-text'] || 'Failed to send message';
+      console.log('Vonage delivery error:', errorMessage);
+      return NextResponse.json({ error: errorMessage }, { status: 500 });
+    }
+
   } catch (error) {
     console.log('API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
