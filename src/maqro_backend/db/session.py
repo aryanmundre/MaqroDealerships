@@ -27,7 +27,17 @@ engine = create_async_engine(
     DATABASE_URL,
     pool_size=10,
     max_overflow=0,
-    connect_args={"statement_cache_size": 0},
+    pool_pre_ping=True,
+    execution_options={
+        "compiled_cache": {},
+    },
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        "server_settings": {
+            "application_name": "maqro_backend",
+        }
+    },
 )
 SessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from .db.models import Lead, Conversation, Inventory, UserProfile
 from .schemas.conversation import MessageCreate
 from .schemas.lead import LeadCreate
@@ -211,3 +211,74 @@ async def get_inventory_by_id(*, session: AsyncSession, inventory_id: str) -> In
         return await session.get(Inventory, inventory_uuid)
     except (ValueError, TypeError):
         return None
+
+
+async def bulk_create_inventory_items(
+    *, 
+    session: AsyncSession, 
+    inventory_data: list[dict], 
+    dealership_id: str
+) -> int:
+    """Bulk create inventory items from a list of dicts"""
+    try:
+        dealership_uuid = uuid.UUID(dealership_id)
+        
+        db_objects = [
+            Inventory(
+                make=item.get('make'),
+                model=item.get('model'),
+                year=item.get('year'),
+                price=str(item.get('price')),
+                mileage=item.get('mileage'),
+                description=item.get('description'),
+                features=item.get('features'),
+                dealership_id=dealership_uuid,
+                status=item.get('status', 'active')
+            ) for item in inventory_data
+        ]
+        
+        session.add_all(db_objects)
+        await session.commit()
+        return len(db_objects)
+    except Exception as e:
+        await session.rollback()
+        raise e
+
+
+async def get_inventory_count(*, session: AsyncSession, dealership_id: str) -> int:
+    """Get the total count of inventory items for a dealership."""
+    try:
+        dealership_uuid = uuid.UUID(dealership_id)
+        result = await session.execute(
+            select(func.count(Inventory.id))
+            .where(Inventory.dealership_id == dealership_uuid)
+        )
+        return result.scalar_one()
+    except (ValueError, TypeError):
+        return 0
+
+
+async def get_lead_stats(*, session: AsyncSession, user_id: str) -> dict:
+    """Get lead statistics for a user."""
+    try:
+        user_uuid = uuid.UUID(user_id)
+        
+        # Get total leads
+        total_leads_result = await session.execute(
+            select(func.count(Lead.id))
+            .where(Lead.user_id == user_uuid)
+        )
+        total = total_leads_result.scalar_one()
+
+        # Get leads by status
+        by_status_result = await session.execute(
+            select(Lead.status, func.count(Lead.id))
+            .where(Lead.user_id == user_uuid)
+            .group_by(Lead.status)
+        )
+        by_status = {status: count for status, count in by_status_result}
+
+        return {"total": total, "by_status": by_status}
+    except (ValueError, TypeError):
+        return {"total": 0, "by_status": {}}
+    

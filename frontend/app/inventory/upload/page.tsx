@@ -76,10 +76,10 @@ export default function InventoryUploadPage() {
   };
 
   const handleUpload = async () => {
-    if (!previewData.length) {
+    if (!file) { // Changed from previewData.length
       toast({
-        title: "No data to upload",
-        description: "Please select a file with inventory data.",
+        title: "No file to upload",
+        description: "Please select an inventory file.",
         variant: "destructive"
       });
       return;
@@ -87,7 +87,7 @@ export default function InventoryUploadPage() {
 
     setIsUploading(true);
     try {
-      const result = await inventoryApi.uploadInventory(previewData);
+      const result = await inventoryApi.uploadInventory(file); // Pass the file object
       setUploadResult(result);
       
       if (result.successCount > 0) {

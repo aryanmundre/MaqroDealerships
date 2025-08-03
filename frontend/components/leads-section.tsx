@@ -75,7 +75,7 @@ export function LeadsSection({ searchTerm = "" }: LeadsSectionProps) {
       ) : (
         <div className="space-y-4">
           {filteredLeads.map((lead, index) => {
-            const SourceIcon = sourceIcons[lead.source as keyof typeof sourceIcons]
+            const SourceIcon = sourceIcons[lead.source as keyof typeof sourceIcons] || Globe
             return (
               <Link key={lead.id} href={`/conversations/${lead.id}`}>
                 <Card

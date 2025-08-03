@@ -1,24 +1,11 @@
 "use client"
 
-import { useMemo } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
-
-// TODO: Replace with actual data from API
-const conversations = [
-  {
-    id: 1,
-    name: "Krishna",
-    car: "",
-    status: "new",
-    lastMessage: "Hi Krishna, this is your dealership agent!",
-    lastMessageTime: "Just now",
-    unreadCount: 1,
-    phone: "+19146022064",
-  },
-]
+import { getLeadsWithConversations, type LeadWithConversationSummary } from "@/lib/conversations-api"
 
 const statusColors = {
   new: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -39,6 +26,43 @@ const statusDescriptions = {
 export default function Conversations() {
   const searchParams = useSearchParams()
   const searchTerm = searchParams.get("search") || ""
+  
+  const [conversations, setConversations] = useState<LeadWithConversationSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch conversations on component mount
+  useEffect(() => {
+    async function fetchConversations() {
+      try {
+        setLoading(true)
+        setError(null)
+        console.log('Starting to fetch conversations...')
+        const data = await getLeadsWithConversations()
+        console.log('Fetched conversations data:', data)
+        setConversations(data)
+      } catch (err) {
+        console.error('Error fetching conversations:', err)
+        let errorMessage = 'Failed to fetch conversations'
+        
+        if (err instanceof Error) {
+          if (err.message.includes('User not authenticated')) {
+            errorMessage = 'You need to be logged in to view conversations'
+          } else if (err.message.includes('Failed to fetch') || err.message.includes('Network')) {
+            errorMessage = 'Unable to connect to the server. Please check if the backend is running on http://localhost:8000'
+          } else {
+            errorMessage = err.message
+          }
+        }
+        
+        setError(errorMessage)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchConversations()
+  }, [])
 
   // Use useMemo to filter conversations based on search term
   const filteredConversations = useMemo(() => {
@@ -46,20 +70,61 @@ export default function Conversations() {
       return conversations.filter(
         (conversation) =>
           conversation.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          conversation.car.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (conversation.car && conversation.car.toLowerCase().includes(searchTerm.toLowerCase())) ||
           conversation.lastMessage.toLowerCase().includes(searchTerm.toLowerCase()) ||
           conversation.status.toLowerCase().includes(searchTerm.toLowerCase()),
       )
     }
     return conversations
-  }, [searchTerm])
+  }, [searchTerm, conversations])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-100">Conversations</h2>
+            <p className="text-gray-400">Manage your lead conversations</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-gray-400">Loading conversations...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-100">Conversations</h2>
+            <p className="text-gray-400">Manage your lead conversations</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-red-400 mb-2">Error loading conversations</h3>
+            <p className="text-gray-400">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-100">Conversations</h2>
-          <p className="text-gray-400">Manage your lead conversations</p>
+          <p className="text-gray-400">Manage your lead conversations ({conversations.length} leads)</p>
         </div>
       </div>
 
@@ -97,6 +162,11 @@ export default function Conversations() {
                         >
                           {conversation.status.charAt(0).toUpperCase() + conversation.status.slice(1)}
                         </Badge>
+                        {conversation.conversationCount > 0 && (
+                          <span className="text-xs text-gray-500">
+                            {conversation.conversationCount} message{conversation.conversationCount !== 1 ? 's' : ''}
+                          </span>
+                        )}
                       </div>
                       <p className="text-gray-400 text-sm mb-1">{conversation.car}</p>
                       <p className="text-gray-300 text-sm">{conversation.lastMessage}</p>
@@ -116,6 +186,13 @@ export default function Conversations() {
         <div className="text-center py-12">
           <h3 className="text-lg font-semibold text-gray-300 mb-2">No conversations found</h3>
           <p className="text-gray-400">Try adjusting your search terms.</p>
+        </div>
+      )}
+      
+      {filteredConversations.length === 0 && !searchTerm && !loading && (
+         <div className="text-center py-12">
+          <h3 className="text-lg font-semibold text-gray-300 mb-2">No conversations yet</h3>
+          <p className="text-gray-400">Start by creating some leads to see conversations here.</p>
         </div>
       )}
     </div>

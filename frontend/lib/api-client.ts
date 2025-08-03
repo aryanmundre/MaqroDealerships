@@ -1,0 +1,98 @@
+import { supabase } from './supabase';
+
+// 1. Helper to get Supabase session
+async function getSupabaseAuth() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+
+  if (error) {
+    console.error('Error getting Supabase session:', error);
+    return null;
+  }
+  if (!session) {
+    console.warn('No active Supabase session found.');
+    return null;
+  }
+  return session;
+}
+
+// 2. Main API client function
+export async function getAuthenticatedApi() {
+  const session = await getSupabaseAuth();
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    throw new Error('User not authenticated. Cannot make API calls.');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-User-Id': userId,
+  };
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api';
+
+  return {
+    get: async <T>(endpoint: string): Promise<T> => {
+      console.log(`Making GET request to: ${baseUrl}${endpoint}`);
+      console.log('Headers:', headers);
+      
+      try {
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+          method: 'GET',
+          headers,
+        });
+        
+        console.log(`Response status: ${response.status} ${response.statusText}`);
+        
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => response.statusText);
+          console.error(`GET ${endpoint} failed:`, errorText);
+          throw new Error(`GET ${endpoint} failed: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log(`GET ${endpoint} successful:`, data);
+        return data;
+      } catch (error) {
+        console.error(`Network error for GET ${endpoint}:`, error);
+        throw error;
+      }
+    },
+    post: async <T>(endpoint: string, body: any): Promise<T> => {
+      const response = await fetch(`${baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+        throw new Error(`POST ${endpoint} failed: ${errorBody.detail}`);
+      }
+      return response.json();
+    },
+    put: async <T>(endpoint: string, body: any): Promise<T> => {
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+          throw new Error(`PUT ${endpoint} failed: ${errorBody.detail}`);
+        }
+        return response.json();
+      },
+  
+      delete: async <T>(endpoint: string): Promise<T> => {
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+          method: 'DELETE',
+          headers,
+        });
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+          throw new Error(`DELETE ${endpoint} failed: ${errorBody.detail}`);
+        }
+        return response.json();
+      },
+  };
+}
