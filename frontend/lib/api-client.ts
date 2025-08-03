@@ -18,15 +18,14 @@ async function getSupabaseAuth() {
 // 2. Main API client function
 export async function getAuthenticatedApi() {
   const session = await getSupabaseAuth();
-  const userId = session?.user?.id;
-
-  if (!userId) {
+  
+  if (!session?.access_token) {
     throw new Error('User not authenticated. Cannot make API calls.');
   }
 
   const headers = {
     'Content-Type': 'application/json',
-    'X-User-Id': userId,
+    'Authorization': `Bearer ${session.access_token}`,
   };
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api';
@@ -47,6 +46,12 @@ export async function getAuthenticatedApi() {
         if (!response.ok) {
           const errorText = await response.text().catch(() => response.statusText);
           console.error(`GET ${endpoint} failed:`, errorText);
+          
+          // Handle authentication errors specifically
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please log in again.');
+          }
+          
           throw new Error(`GET ${endpoint} failed: ${response.status} ${response.statusText}`);
         }
         
@@ -66,6 +71,12 @@ export async function getAuthenticatedApi() {
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+        
+        // Handle authentication errors specifically
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.');
+        }
+        
         throw new Error(`POST ${endpoint} failed: ${errorBody.detail}`);
       }
       return response.json();
@@ -78,6 +89,12 @@ export async function getAuthenticatedApi() {
         });
         if (!response.ok) {
           const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+          
+          // Handle authentication errors specifically
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please log in again.');
+          }
+          
           throw new Error(`PUT ${endpoint} failed: ${errorBody.detail}`);
         }
         return response.json();
@@ -90,6 +107,12 @@ export async function getAuthenticatedApi() {
         });
         if (!response.ok) {
           const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+          
+          // Handle authentication errors specifically
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please log in again.');
+          }
+          
           throw new Error(`DELETE ${endpoint} failed: ${errorBody.detail}`);
         }
         return response.json();

@@ -27,6 +27,14 @@ export const inventoryApi = {
   },
 
   async uploadInventory(file: File): Promise<InventoryUploadResult> {
+    // Get authentication session for file upload
+    const { supabase } = await import('./supabase');
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      throw new Error('User not authenticated. Cannot upload file.');
+    }
+
     const formData = new FormData();
     formData.append('file', file);
 
@@ -34,11 +42,21 @@ export const inventoryApi = {
     
     const response = await fetch(`${apiBaseUrl}/inventory/upload`, {
       method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        // Note: Don't set Content-Type for FormData - let browser set it with boundary
+      },
       body: formData,
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: 'Upload failed' }));
+      
+      // Handle authentication errors specifically
+      if (response.status === 401) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
+      
       throw new Error(errorData.detail);
     }
 

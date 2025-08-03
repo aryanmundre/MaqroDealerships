@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     database_url: str | None = None
     supabase_db_url: str | None = None
 
+    # Supabase JWT secret for authentication
+    supabase_jwt_secret: str
+
     rag_config_path: str = "config.yaml"
     rag_index_name: str = "vehicle_index"
 

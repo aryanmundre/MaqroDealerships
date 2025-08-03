@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from maqro_rag import VehicleRetriever
-from maqro_backend.api.deps import get_rag_retriever
+from maqro_backend.api.deps import get_rag_retriever, get_current_user_id
 from maqro_backend.schemas.ai import VehicleSearchResponse
 
 router = APIRouter()
@@ -16,7 +16,8 @@ async def health_check():
 async def search_vehicles(
     query: str, 
     top_k: int = 3,
-    retriever: VehicleRetriever = Depends(get_rag_retriever)
+    retriever: VehicleRetriever = Depends(get_rag_retriever),
+    user_id: str = Depends(get_current_user_id)
 ):
     """Search for vehicles using RAG system"""
     results = retriever.search_vehicles(query, top_k)
