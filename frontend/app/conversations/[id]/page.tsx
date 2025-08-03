@@ -1,34 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, use } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Send, Check, X, Bot, User } from "lucide-react"
 import Link from "next/link"
-
-// TODO: Replace with actual data from API based on lead ID
-const leadData = {
-  id: 1,
-  name: "Krishna",
-  car: "",
-  status: "new",
-  phone: "+19146022064",
-  email: "",
-}
-
-// TODO: Replace with actual conversation data from API
-const messages = [
-  {
-    id: 1,
-    sender: "agent",
-    content: "Hi Krishna, this is your dealership agent!",
-    timestamp: "Just now",
-    type: "message",
-    // no 'approved' property for normal messages
-  },
-]
+import { getLeadById } from "@/lib/leads-api"
+import { getConversations, addMessage } from "@/lib/conversations-api"
+import type { Lead, Conversation } from "@/lib/supabase"
 
 const statusColors = {
   new: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -38,32 +19,27 @@ const statusColors = {
   cold: "bg-gray-500/20 text-gray-400 border-gray-500/30",
 }
 
-export default function ConversationDetail({ params }: { params: { id: string } }) {
+export default function ConversationDetail({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params)
+  const [leadData, setLeadData] = useState<Lead | null>(null)
   const [customMessage, setCustomMessage] = useState("")
-  const [messageList, setMessageList] = useState(messages)
+  const [messageList, setMessageList] = useState<Conversation[]>([])
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [sendSuccess, setSendSuccess] = useState(false)
 
-  // TODO: Implement API call to approve AI suggestion
-  const handleApprove = (messageId: number) => {
-    setMessageList((prev) =>
-      prev.map((msg) => (msg.id === messageId ? { ...msg, approved: true, sender: "agent", type: "message" } : msg)),
-    )
-    // TODO: API call to send approved message
-    console.log("Approved message:", messageId)
-  }
+  useEffect(() => {
+    async function fetchData() {
+      const lead = await getLeadById(resolvedParams.id)
+      setLeadData(lead)
+      const conversations = await getConversations(resolvedParams.id)
+      setMessageList(conversations)
+    }
+    fetchData()
+  }, [resolvedParams.id])
 
-  // TODO: Implement API call to reject AI suggestion
-  const handleReject = (messageId: number) => {
-    setMessageList((prev) => prev.filter((msg) => msg.id !== messageId))
-    // TODO: API call to reject suggestion
-    console.log("Rejected message:", messageId)
-  }
-
-  // TODO: Implement API call to send custom message
   const handleSendMessage = async () => {
-    if (!customMessage.trim()) return
+    if (!customMessage.trim() || !leadData) return
     setSending(true)
     setSendError(null)
     setSendSuccess(false)
@@ -71,33 +47,19 @@ export default function ConversationDetail({ params }: { params: { id: string } 
     const messageToSend = customMessage.trim()
     
     try {
-      const res = await fetch("/api/send-message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: leadData.phone, body: messageToSend }),
-      })
-      
-      if (!res.ok) {
-        const data = await res.json()
-        setSendError(data.error || "Failed to send message")
-      } else {
-        setSendSuccess(true)
-        // Only add to UI and clear input after successful API call
-        const newMessage = {
-          id: Date.now(),
-          sender: "agent" as const,
-          content: messageToSend,
-          timestamp: "Just now",
-          type: "message" as const,
-        }
-        setMessageList((prev) => [...prev, newMessage])
-        setCustomMessage("")
-      }
+      const newMessage = await addMessage(leadData.id, messageToSend)
+      setSendSuccess(true)
+      setMessageList((prev) => [...prev, newMessage])
+      setCustomMessage("")
     } catch (err) {
       setSendError("Failed to send message")
     } finally {
       setSending(false)
     }
+  }
+
+  if (!leadData) {
+    return <div>Loading...</div>
   }
 
   return (
@@ -137,57 +99,29 @@ export default function ConversationDetail({ params }: { params: { id: string } 
                   {messageList.map((message) => (
                     <div
                       key={message.id}
-                      className={`flex ${message.sender === "lead" ? "justify-start" : "justify-end"}`}
+                      className={`flex ${message.sender === "customer" ? "justify-start" : "justify-end"}`}
                     >
                       <div
                         className={`max-w-[70%] ${
-                          message.sender === "lead"
+                          message.sender === "customer"
                             ? "bg-gray-800 text-gray-100"
-                            : message.type === "suggestion"
-                              ? "bg-blue-900/30 border border-blue-500/30 text-blue-100"
-                              : "bg-blue-600 text-white"
+                            : "bg-blue-600 text-white"
                         } rounded-lg p-4`}
                       >
                         <div className="flex items-center gap-2 mb-2">
-                          {message.sender === "lead" ? (
+                          {message.sender === "customer" ? (
                             <User className="w-4 h-4" />
-                          ) : message.type === "suggestion" ? (
-                            <Bot className="w-4 h-4" />
                           ) : (
                             <User className="w-4 h-4" />
                           )}
                           <span className="text-sm font-medium">
-                            {message.sender === "lead"
+                            {message.sender === "customer"
                               ? leadData.name
-                              : message.type === "suggestion"
-                                ? "AI Suggestion"
-                                : "You"}
+                              : "You"}
                           </span>
-                          <span className="text-xs opacity-70">{message.timestamp}</span>
+                          <span className="text-xs opacity-70">{new Date(message.created_at).toLocaleTimeString()}</span>
                         </div>
-                        <p className="text-sm">{message.content}</p>
-
-                        {message.type === "suggestion" && "approved" in message && !message.approved && (
-                          <div className="flex gap-2 mt-3">
-                            <Button
-                              size="sm"
-                              onClick={() => handleApprove(message.id)}
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                            >
-                              <Check className="w-4 h-4 mr-1" />
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleReject(message.id)}
-                              className="border-red-500 text-red-400 hover:bg-red-500/10"
-                            >
-                              <X className="w-4 h-4 mr-1" />
-                              Reject
-                            </Button>
-                          </div>
-                        )}
+                        <p className="text-sm">{message.message}</p>
                       </div>
                     </div>
                   ))}

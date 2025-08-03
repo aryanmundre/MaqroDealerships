@@ -1,15 +1,20 @@
 """
 Inventory API routes for Supabase integration
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from maqro_backend.api.deps import get_db_session, get_current_user_id
+import pandas as pd
+from io import BytesIO
+
+from maqro_backend.api.deps import get_db_session, get_current_user_id, get_optional_user_id
 from maqro_backend.schemas.inventory import InventoryCreate, InventoryResponse, InventoryUpdate
 from maqro_backend.crud import (
     create_inventory_item,
     get_inventory_by_dealership,
-    get_inventory_by_id
+    get_inventory_by_id,
+    bulk_create_inventory_items,
+    get_inventory_count
 )
 import logging
 
@@ -192,5 +197,72 @@ async def delete_inventory_item(
     
     await db.delete(inventory)
     await db.commit()
-    
+        
     return {"message": "Inventory item deleted successfully"}
+
+
+@router.post("/inventory/upload")
+async def upload_inventory_file(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_optional_user_id) # Optional for now
+):
+    """
+    Upload and process inventory file (CSV or Excel)
+    """
+    # For now, we'll use a hardcoded user_id for testing
+    # In the future, this will be retrieved from the auth token
+    if not user_id:
+        user_id = "a1b2c3d4-e5f6-7890-1234-567890abcdef" # Replace with a valid UUID from your db for testing
+        
+    # Read file into a pandas DataFrame
+    try:
+        content = await file.read()
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(BytesIO(content))
+        elif file.filename.endswith(('.xls', '.xlsx')):
+            df = pd.read_excel(BytesIO(content))
+        else:
+            raise HTTPException(status_code=400, detail="Invalid file format. Please upload a CSV or Excel file.")
+    except Exception as e:
+        logger.error(f"Failed to parse file: {e}")
+        raise HTTPException(status_code=400, detail=f"Error parsing file: {e}")
+
+    # Data transformation and validation
+    df = df.rename(columns=lambda x: x.strip().lower().replace(' ', '_'))
+    
+    required_columns = ['make', 'model', 'year', 'price']
+    if not all(col in df.columns for col in required_columns):
+        raise HTTPException(status_code=400, detail=f"Missing required columns: {required_columns}")
+
+    # Convert to list of dicts for CRUD operation
+    inventory_list = df.to_dict(orient='records')
+    
+    # Save to database
+    try:
+        num_created = await bulk_create_inventory_items(
+            session=db,
+            inventory_data=inventory_list,
+            dealership_id=user_id
+        )
+        return {
+            "message": f"Successfully uploaded {num_created} inventory items.",
+            "success_count": num_created,
+            "error_count": len(inventory_list) - num_created
+        }
+    except Exception as e:
+        logger.error(f"Database error during bulk insert: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save inventory to database: {e}")
+
+
+@router.get("/inventory/count", response_model=int)
+async def get_inventory_count_for_dealership(
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get the total count of inventory items for the authenticated dealership.
+    """
+    count = await get_inventory_count(session=db, dealership_id=user_id)
+    return count
+    

@@ -3,7 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from maqro_backend.api.deps import get_db_session, get_current_user_id
 from maqro_backend.schemas.lead import LeadCreate, LeadResponse
-from maqro_backend.crud import create_lead_with_initial_message, get_all_leads_ordered, get_lead_by_id
+from maqro_backend.crud import (
+    create_lead_with_initial_message, 
+    get_all_leads_ordered, 
+    get_lead_by_id,
+    get_lead_stats
+)
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -107,3 +112,61 @@ async def get_lead(
         user_id=str(lead.user_id),
         created_at=lead.created_at
     )
+
+
+@router.put("/leads/{lead_id}", response_model=LeadResponse)
+async def update_lead(
+    lead_id: str,
+    lead_data: LeadCreate,
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Update a lead
+    """
+    lead = await get_lead_by_id(session=db, lead_id=lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if str(lead.user_id) != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    update_data = lead_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(lead, field, value)
+        
+    await db.commit()
+    await db.refresh(lead)
+    
+    return lead
+
+
+@router.delete("/leads/{lead_id}")
+async def delete_lead(
+    lead_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Delete a lead
+    """
+    lead = await get_lead_by_id(session=db, lead_id=lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if str(lead.user_id) != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    await db.delete(lead)
+    await db.commit()
+    
+    return {"message": "Lead deleted successfully"}
+
+
+@router.get("/leads/stats")
+async def get_stats(
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get lead statistics
+    """
+    return await get_lead_stats(session=db, user_id=user_id)
