@@ -54,12 +54,13 @@ async def get_all_leads(
     user_id: str = Depends(get_current_user_id)
 ):
     """
-    Get all leads for the authenticated user (Supabase RLS compatible)
+    Get all leads for the authenticated user (JWT authenticated)
     
-    Headers required:
-    - X-User-Id: UUID of the authenticated user (from Supabase)
+    Authentication: Bearer token required in Authorization header
     """
+    logger.info(f"📊 Fetching all leads for authenticated user: {user_id}")
     leads = await get_all_leads_ordered(session=db, user_id=user_id)
+    logger.info(f"✅ Found {len(leads)} leads for user {user_id}")
     
     # Convert UUIDs to strings for JSON serialization
     return [

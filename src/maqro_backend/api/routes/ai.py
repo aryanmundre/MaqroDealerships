@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 import pytz
 from maqro_rag import VehicleRetriever, EnhancedRAGService
-from maqro_backend.api.deps import get_db_session, get_enhanced_rag_services
+from maqro_backend.api.deps import get_db_session, get_enhanced_rag_services, get_current_user_id
 from maqro_backend.schemas.ai import AIResponseRequest, GeneralAIRequest
 from maqro_backend.crud import (
     get_lead_by_id,
@@ -29,7 +29,8 @@ async def generate_conversation_ai_response(
     lead_id: int, 
     request_data: AIResponseRequest | None = None,
     db: AsyncSession = Depends(get_db_session),
-    enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services)
+    enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Generate AI response based on complete conversation history and save it
@@ -41,6 +42,10 @@ async def generate_conversation_ai_response(
     lead = await get_lead_by_id(session=db, lead_id=lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # Verify the lead belongs to the authenticated user
+    if str(lead.user_id) != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     try:
         # Get complete conversation history (no limits)
@@ -106,7 +111,8 @@ async def generate_conversation_ai_response(
 @router.post("/ai-response/general")
 async def generate_general_ai_response(
     request_data: GeneralAIRequest,
-    enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services)
+    enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Generate AI response based on general text query (no conversation context)
@@ -144,7 +150,8 @@ async def generate_general_ai_response(
 @router.post("/ai-response/enhanced")
 async def generate_enhanced_ai_response(
     request_data: GeneralAIRequest,
-    enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services)
+    enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services),
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Generate enhanced AI response with advanced features
