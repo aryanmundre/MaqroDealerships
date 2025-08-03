@@ -54,6 +54,8 @@ Make sure your repository contains:
 4. Render will automatically detect the `render.yaml` file and create the service
 5. Set the environment variables as listed above
 
+**Note**: The `render.yaml` file includes the `PYTHONPATH` environment variable to ensure the `src` directory is properly included in the Python path.
+
 ## Step 4: Manual Deployment (Alternative)
 
 If you prefer manual setup:
@@ -79,9 +81,13 @@ After deployment, your API will be available at:
 
 ### Common Issues:
 
-1. **Module not found errors**: The `PYTHONPATH` is set in the startup script to include the `src` directory
+1. **Module not found errors**: 
+   - The `PYTHONPATH` is set in the startup script to include the `src` directory
+   - If you see "No module named 'maqro_rag'" errors, ensure the `src` directory is in the Python path
+   - The `render.yaml` file includes `PYTHONPATH=$PYTHONPATH:./src` in the start command
 2. **Database connection errors**: Ensure all Supabase environment variables are correctly set
 3. **API key errors**: Verify your OpenAI API key is valid and has sufficient credits
+4. **Missing dependencies**: Ensure all required packages are in `requirements.txt` (including `pydantic-settings`)
 
 ### Logs:
 - Check Render logs in the dashboard for detailed error messages
