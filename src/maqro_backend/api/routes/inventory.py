@@ -7,7 +7,7 @@ from typing import List
 import pandas as pd
 from io import BytesIO
 
-from maqro_backend.api.deps import get_db_session, get_current_user_id, get_optional_user_id
+from maqro_backend.api.deps import get_db_session, get_current_user_id, get_optional_user_id, get_user_dealership_id, get_optional_user_dealership_id
 from maqro_backend.schemas.inventory import InventoryCreate, InventoryResponse, InventoryUpdate
 from maqro_backend.crud import (
     create_inventory_item,
@@ -28,15 +28,15 @@ router = APIRouter()
 async def create_inventory(
     inventory_data: InventoryCreate,
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Create a new inventory item (Supabase compatible)
     
     Headers required:
-    - X-User-Id: UUID of the authenticated dealership (from Supabase)
+    - Authorization: Bearer <JWT token>
     """
-    logger.info(f"Creating inventory item: {inventory_data.make} {inventory_data.model} for dealership: {user_id}")
+    logger.info(f"Creating inventory item: {inventory_data.make} {inventory_data.model} for dealership: {dealership_id}")
     
     # Convert InventoryCreate to dict for CRUD function
     inventory_dict = inventory_data.model_dump()
@@ -44,7 +44,7 @@ async def create_inventory(
     inventory = await create_inventory_item(
         session=db,
         inventory_data=inventory_dict,
-        dealership_id=user_id
+        dealership_id=dealership_id
     )
     
     return InventoryResponse(
@@ -66,15 +66,15 @@ async def create_inventory(
 @router.get("/inventory", response_model=List[InventoryResponse])
 async def get_dealership_inventory(
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Get all inventory items for the authenticated dealership (Supabase RLS compatible)
     
     Headers required:
-    - X-User-Id: UUID of the authenticated dealership (from Supabase)
+    - Authorization: Bearer <JWT token>
     """
-    inventory_items = await get_inventory_by_dealership(session=db, dealership_id=user_id)
+    inventory_items = await get_inventory_by_dealership(session=db, dealership_id=dealership_id)
     
     return [
         InventoryResponse(
@@ -98,20 +98,20 @@ async def get_dealership_inventory(
 async def get_inventory_item(
     inventory_id: str,
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Get specific inventory item by UUID (Supabase compatible)
     
     Headers required:
-    - X-User-Id: UUID of the authenticated dealership (from Supabase)
+    - Authorization: Bearer <JWT token>
     """
     inventory = await get_inventory_by_id(session=db, inventory_id=inventory_id)
     if not inventory:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
     # Verify the inventory belongs to the authenticated dealership
-    if str(inventory.dealership_id) != user_id:
+    if str(inventory.dealership_id) != dealership_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
     return InventoryResponse(
@@ -135,20 +135,20 @@ async def update_inventory_item(
     inventory_id: str,
     inventory_update: InventoryUpdate,
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Update inventory item (Supabase compatible)
     
     Headers required:
-    - X-User-Id: UUID of the authenticated dealership (from Supabase)
+    - Authorization: Bearer <JWT token>
     """
     inventory = await get_inventory_by_id(session=db, inventory_id=inventory_id)
     if not inventory:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
     # Verify the inventory belongs to the authenticated dealership
-    if str(inventory.dealership_id) != user_id:
+    if str(inventory.dealership_id) != dealership_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Update fields that are provided
@@ -179,20 +179,20 @@ async def update_inventory_item(
 async def delete_inventory_item(
     inventory_id: str,
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Delete inventory item (Supabase compatible)
     
     Headers required:
-    - X-User-Id: UUID of the authenticated dealership (from Supabase)
+    - Authorization: Bearer <JWT token>
     """
     inventory = await get_inventory_by_id(session=db, inventory_id=inventory_id)
     if not inventory:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     
     # Verify the inventory belongs to the authenticated dealership
-    if str(inventory.dealership_id) != user_id:
+    if str(inventory.dealership_id) != dealership_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
     await db.delete(inventory)
@@ -205,15 +205,11 @@ async def delete_inventory_item(
 async def upload_inventory_file(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_optional_user_id) # Optional for now
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Upload and process inventory file (CSV or Excel)
     """
-    # For now, we'll use a hardcoded user_id for testing
-    # In the future, this will be retrieved from the auth token
-    if not user_id:
-        user_id = "a1b2c3d4-e5f6-7890-1234-567890abcdef" # Replace with a valid UUID from your db for testing
         
     # Read file into a pandas DataFrame
     try:
@@ -243,7 +239,7 @@ async def upload_inventory_file(
         num_created = await bulk_create_inventory_items(
             session=db,
             inventory_data=inventory_list,
-            dealership_id=user_id
+            dealership_id=dealership_id
         )
         return {
             "message": f"Successfully uploaded {num_created} inventory items.",
@@ -258,11 +254,11 @@ async def upload_inventory_file(
 @router.get("/inventory/count", response_model=int)
 async def get_inventory_count_for_dealership(
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Get the total count of inventory items for the authenticated dealership.
     """
-    count = await get_inventory_count(session=db, dealership_id=user_id)
+    count = await get_inventory_count(session=db, dealership_id=dealership_id)
     return count
     

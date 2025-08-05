@@ -19,6 +19,7 @@ class LeadCreate(LeadBase):
     car: str = "Unknown"  # Required field in Supabase
     source: str = "Website"  # Required field in Supabase
     message: str | None = None  # Their initial message/inquiry
+    dealership_id: str | None = None  # Will be auto-populated from user's dealership
 
 
 class LeadResponse(LeadBase):
@@ -27,7 +28,10 @@ class LeadResponse(LeadBase):
     status: str
     last_contact: str
     message: str | None = None
-    user_id: str = Field(..., description="User UUID as string")
+    deal_value: str | None = None
+    appointment_datetime: datetime | None = None
+    user_id: str | None = Field(None, description="Assigned salesperson UUID as string")
+    dealership_id: str = Field(..., description="Dealership UUID as string")
     created_at: datetime
     model_config = {
         "from_attributes": True
@@ -44,3 +48,6 @@ class LeadUpdate(BaseModel):
     status: str | None = None
     last_contact: str | None = None
     message: str | None = None
+    deal_value: str | None = None
+    appointment_datetime: datetime | None = None
+    user_id: str | None = None  # For assigning/reassigning salesperson

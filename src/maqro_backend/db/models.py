@@ -19,15 +19,19 @@ class Lead(Base):
     name = Column(Text, nullable=False)
     car = Column(Text, nullable=False)
     source = Column(Text, nullable=False)
-    status = Column(Text, nullable=False)  # 'new', 'warm', 'hot', 'follow-up', 'cold'
+    status = Column(Text, nullable=False)  # 'new', 'warm', 'hot', 'follow-up', 'cold', 'deal_won', 'deal_lost'
     last_contact = Column(Text, nullable=False)
     email = Column(Text)
     phone = Column(Text)
     message = Column(Text)
-    user_id = Column(UUID(as_uuid=True), nullable=False)
+    deal_value = Column(String)  # Using String to match DECIMAL(10,2)
+    appointment_datetime = Column(DateTime(timezone=True))
+    user_id = Column(UUID(as_uuid=True))  # Assigned salesperson (nullable)
+    dealership_id = Column(UUID(as_uuid=True), ForeignKey("dealerships.id"), nullable=False)
 
     # Relationships
     conversations = relationship("Conversation", back_populates="lead", cascade="all, delete-orphan")
+    dealership = relationship("Dealership", back_populates="leads")
 
 
 class Conversation(Base):
@@ -58,8 +62,11 @@ class Inventory(Base):
     mileage = Column(Integer)
     description = Column(Text)
     features = Column(Text)
-    dealership_id = Column(UUID(as_uuid=True), nullable=False)
+    dealership_id = Column(UUID(as_uuid=True), ForeignKey("dealerships.id"), nullable=False)
     status = Column(Text, default="active")  # 'active', 'sold', 'pending'
+
+    # Relationships
+    dealership = relationship("Dealership", back_populates="inventory")
 
 
 class UserProfile(Base):
@@ -68,9 +75,30 @@ class UserProfile(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
     user_id = Column(UUID(as_uuid=True), nullable=False, unique=True)
+    dealership_id = Column(UUID(as_uuid=True), ForeignKey("dealerships.id"))
     full_name = Column(Text)
     phone = Column(Text)
-    role = Column(Text)
+    role = Column(Text)  # 'admin', 'salesperson'
     timezone = Column(Text, default="America/New_York")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    dealership = relationship("Dealership", back_populates="user_profiles")
+
+
+class Dealership(Base):
+    """Dealership model for storing organization-level data"""
+    __tablename__ = "dealerships"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    name = Column(Text, nullable=False)
+    location = Column(Text)
+    # crm_api_key = Column(Text) # Note: Should be encrypted at rest
+
+    # Relationships
+    user_profiles = relationship("UserProfile", back_populates="dealership")
+    inventory = relationship("Inventory", back_populates="dealership")
+    leads = relationship("Lead", back_populates="dealership")
