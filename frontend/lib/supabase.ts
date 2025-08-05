@@ -4,10 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 // NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
 // NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
   console.warn('Missing Supabase environment variables. Check your .env.local file.');
 }
 

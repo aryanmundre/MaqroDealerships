@@ -70,8 +70,8 @@ export function Header() {
   const showSearchBar = pathname === "/" || pathname === "/conversations"
 
   return (
-    <header className="border-b border-gray-800 bg-gray-950/50 backdrop-blur-sm">
-      <div className="flex items-center justify-between px-6 py-4">
+    <header className="border-b border-gray-800 bg-gray-950/50 backdrop-blur-sm min-w-0">
+      <div className="flex items-center justify-between px-6 py-4 min-w-0">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">{pageName}</h1>
         </div>
