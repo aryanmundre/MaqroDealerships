@@ -218,5 +218,8 @@ async def get_user_email(token: str = Depends(JWTBearer())) -> Optional[str]:
     return payload.get("email")
 
 
+
+
+
 # Legacy compatibility - for gradual migration
 jwt_bearer = JWTBearer()

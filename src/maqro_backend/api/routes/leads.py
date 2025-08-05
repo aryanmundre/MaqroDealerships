@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from maqro_backend.api.deps import get_db_session, get_current_user_id
+from maqro_backend.api.deps import get_db_session, get_current_user_id, get_user_dealership_id
 from maqro_backend.schemas.lead import LeadCreate, LeadResponse
 from maqro_backend.crud import (
     create_lead_with_initial_message, 
@@ -21,26 +21,28 @@ router = APIRouter()
 async def create_lead(
     lead_data: LeadCreate, 
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id),
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Create a new lead from frontend chat (Supabase compatible)
     
     1. Frontend sends: name, email, phone, car, source, initial message
-    2. We create a Lead record in database with user_id for RLS
+    2. We create a Lead record in database with dealership_id for RLS
     3. We save their first message as a Conversation record (if provided)
     4. Return the lead UUID so frontend can reference it
     
     Headers required:
-    - X-User-Id: UUID of the authenticated user (from Supabase)
+    - Authorization: Bearer <JWT token>
     """
-    logger.info(f"Creating new lead: {lead_data.name} for user: {user_id}")
+    logger.info(f"Creating new lead: {lead_data.name} for dealership: {dealership_id}")
     
-    # Use the combined CRUD operation with user_id for RLS compliance
+    # Use the combined CRUD operation with dealership_id for RLS compliance
     result = await create_lead_with_initial_message(
         session=db, 
         lead_in=lead_data, 
-        user_id=user_id
+        user_id=user_id,  # Assigned salesperson
+        dealership_id=dealership_id
     )
     
     logger.info(f"Lead created with ID: {result['lead_id']}")
@@ -51,16 +53,16 @@ async def create_lead(
 @router.get("/leads", response_model=List[LeadResponse])
 async def get_all_leads(
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
-    Get all leads for the authenticated user (JWT authenticated)
+    Get all leads for the authenticated user's dealership (JWT authenticated)
     
     Authentication: Bearer token required in Authorization header
     """
-    logger.info(f"📊 Fetching all leads for authenticated user: {user_id}")
-    leads = await get_all_leads_ordered(session=db, user_id=user_id)
-    logger.info(f"✅ Found {len(leads)} leads for user {user_id}")
+    logger.info(f"📊 Fetching all leads for dealership: {dealership_id}")
+    leads = await get_all_leads_ordered(session=db, dealership_id=dealership_id)
+    logger.info(f"✅ Found {len(leads)} leads for dealership {dealership_id}")
     
     # Convert UUIDs to strings for JSON serialization
     return [
@@ -74,7 +76,10 @@ async def get_all_leads(
             status=lead.status,
             last_contact=lead.last_contact,
             message=lead.message,
-            user_id=str(lead.user_id),
+            deal_value=lead.deal_value,
+            appointment_datetime=lead.appointment_datetime,
+            user_id=str(lead.user_id) if lead.user_id else None,
+            dealership_id=str(lead.dealership_id),
             created_at=lead.created_at
         ) for lead in leads
     ]
@@ -84,20 +89,20 @@ async def get_all_leads(
 async def get_lead(
     lead_id: str, 
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Get specific lead by UUID (Supabase compatible)
     
     Headers required:
-    - X-User-Id: UUID of the authenticated user (from Supabase)
+    - Authorization: Bearer <JWT token>
     """
     lead = await get_lead_by_id(session=db, lead_id=lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     
-    # Verify the lead belongs to the authenticated user (additional RLS check)
-    if str(lead.user_id) != user_id:
+    # Verify the lead belongs to the authenticated user's dealership (additional RLS check)
+    if str(lead.dealership_id) != dealership_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
     return LeadResponse(
@@ -110,7 +115,10 @@ async def get_lead(
         status=lead.status,
         last_contact=lead.last_contact,
         message=lead.message,
-        user_id=str(lead.user_id),
+        deal_value=lead.deal_value,
+        appointment_datetime=lead.appointment_datetime,
+        user_id=str(lead.user_id) if lead.user_id else None,
+        dealership_id=str(lead.dealership_id),
         created_at=lead.created_at
     )
 
@@ -120,7 +128,7 @@ async def update_lead(
     lead_id: str,
     lead_data: LeadCreate,
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Update a lead
@@ -128,24 +136,40 @@ async def update_lead(
     lead = await get_lead_by_id(session=db, lead_id=lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    if str(lead.user_id) != user_id:
+    if str(lead.dealership_id) != dealership_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
     update_data = lead_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(lead, field, value)
+        if field != 'dealership_id':  # Don't allow changing dealership
+            setattr(lead, field, value)
         
     await db.commit()
     await db.refresh(lead)
     
-    return lead
+    return LeadResponse(
+        id=str(lead.id),
+        name=lead.name,
+        email=lead.email,
+        phone=lead.phone,
+        car=lead.car,
+        source=lead.source,
+        status=lead.status,
+        last_contact=lead.last_contact,
+        message=lead.message,
+        deal_value=lead.deal_value,
+        appointment_datetime=lead.appointment_datetime,
+        user_id=str(lead.user_id) if lead.user_id else None,
+        dealership_id=str(lead.dealership_id),
+        created_at=lead.created_at
+    )
 
 
 @router.delete("/leads/{lead_id}")
 async def delete_lead(
     lead_id: str,
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Delete a lead
@@ -153,7 +177,7 @@ async def delete_lead(
     lead = await get_lead_by_id(session=db, lead_id=lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    if str(lead.user_id) != user_id:
+    if str(lead.dealership_id) != dealership_id:
         raise HTTPException(status_code=403, detail="Access denied")
         
     await db.delete(lead)
@@ -165,9 +189,9 @@ async def delete_lead(
 @router.get("/leads/stats")
 async def get_stats(
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
-    Get lead statistics
+    Get lead statistics for the dealership
     """
-    return await get_lead_stats(session=db, user_id=user_id)
+    return await get_lead_stats(session=db, dealership_id=dealership_id)
