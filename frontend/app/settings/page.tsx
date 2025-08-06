@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { User, Bell, Shield, Database, Mail, Phone, SettingsIcon, Eye, EyeOff } from "lucide-react"
-import { getUserProfileWithFallback, upsertUserProfile, changePassword, testDatabaseConnection } from "@/lib/user-profile-api"
+import { getMyProfile, updateMyProfile} from "@/lib/user-profile-api"
+import { changePassword } from "@/lib/auth-api"
 import { useAuth } from "@/components/auth/auth-provider"
 import { toast } from "sonner"
 
@@ -25,7 +26,6 @@ export default function Settings() {
 
   const [profile, setProfile] = useState({
     name: "",
-    email: "",
     phone: "",
     role: "",
     timezone: "America/New_York",
@@ -52,14 +52,10 @@ export default function Settings() {
   useEffect(() => {
     const loadProfile = async () => {
       try {
-        // First test the database connection
-        await testDatabaseConnection()
-        
-        const profileData = await getUserProfileWithFallback()
+        const profileData = await getMyProfile()
         setProfile({
           name: profileData.full_name,
-          email: profileData.email,
-          phone: profileData.phone,
+          phone: profileData.phone ?? "",
           role: profileData.role,
           timezone: profileData.timezone,
         })
@@ -79,7 +75,7 @@ export default function Settings() {
     setLoading(prev => ({ ...prev, profile: true }))
     
     try {
-      await upsertUserProfile({
+      await updateMyProfile({
         full_name: profile.name,
         phone: profile.phone,
         role: profile.role,
@@ -156,18 +152,6 @@ export default function Settings() {
                     value={profile.name}
                     onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                     className="bg-gray-800 border-gray-700 text-gray-100"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-gray-300">
-                    Email
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={profile.email}
-                    disabled
-                    className="bg-gray-800 border-gray-700 text-gray-100 opacity-50"
                   />
                 </div>
                 <div className="space-y-2">

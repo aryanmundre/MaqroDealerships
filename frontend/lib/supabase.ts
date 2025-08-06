@@ -52,6 +52,18 @@ export type Conversation = {
   lead_id: string;
 }
 
+export type UserProfile ={
+  id: string
+  user_id: string
+  dealership_id?: string | null
+  full_name: string
+  phone?: string
+  role: string
+  timezone: string
+  created_at: string
+  updated_at: string
+}
+
 // Helper function to check if user is logged in
 export const isUserLoggedIn = async () => {
   const { data: { session } } = await supabase.auth.getSession();
