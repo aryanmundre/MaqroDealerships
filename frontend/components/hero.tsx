@@ -101,7 +101,7 @@ export function Hero() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-3 text-sm">
                       <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                      <span className="text-gray-300">AI responded to John D. - 2 min ago</span>
+                      <span className="text-gray-300">Agent responded to John D. - 2 min ago</span>
                     </div>
                     <div className="flex items-center gap-3 text-sm">
                       <div className="w-2 h-2 bg-green-400 rounded-full"></div>
