@@ -280,7 +280,7 @@ class CombinedRAGTester:
         # Test with non-existent file
         try:
             retriever = VehicleRetriever(self.config)
-            retriever.build_index("non_existent_file.csv")
+            retriever.build_index("non_existent_file.csv", "test_index")
             assert False, "Should have raised error for non-existent file"
         except FileNotFoundError:
             logger.info("✅ Correctly handled non-existent inventory file")
