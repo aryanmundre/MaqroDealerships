@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Send, Check, X, Bot, User } from "lucide-react"
 import Link from "next/link"
-import { getLeadById } from "@/lib/leads-api"
+import { getMyLeadById } from "@/lib/leads-api"
 import { getConversations, addMessage } from "@/lib/conversations-api"
 import type { Lead, Conversation } from "@/lib/supabase"
 
@@ -30,7 +30,7 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
 
   useEffect(() => {
     async function fetchData() {
-      const lead = await getLeadById(resolvedParams.id)
+      const lead = await getMyLeadById(resolvedParams.id)
       setLeadData(lead)
       const conversations = await getConversations(resolvedParams.id)
       setMessageList(conversations)

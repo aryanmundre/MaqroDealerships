@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Globe, Facebook, Instagram, Phone } from "lucide-react"
 import Link from "next/link"
-import { getLeads } from "@/lib/leads-api"
+import { getMyLeads } from "@/lib/leads-api"
 import { Lead } from "@/lib/supabase"
 import { useAuth } from "@/components/auth/auth-provider"
 
@@ -39,7 +39,7 @@ export function LeadsSection({ searchTerm = "" }: LeadsSectionProps) {
     async function fetchLeads() {
       try {
         setLoading(true);
-        const data = await getLeads(searchTerm);
+        const data = await getMyLeads(searchTerm);
         setLeads(data);
         setError(null);
       } catch (err) {

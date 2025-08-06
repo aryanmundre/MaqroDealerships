@@ -66,6 +66,20 @@ async def get_lead_by_email(*, session: AsyncSession, email: str, dealership_id:
     except (ValueError, TypeError):
         return None
 
+async def get_leads_by_salesperson(
+        *, session: AsyncSession, salesperson_id: str
+) -> list[Lead]:
+    """Return all leads assigned to a specific salesperson (newest first)"""
+    try:
+        salesperson_uuid = uuid.UUID(salesperson_id)
+        result = await session.execute(
+            select(Lead)
+            .where(Lead.user_id == salesperson_uuid)
+            .order_by(Lead.created_at.desc())
+        )
+        return result.scalars().all()
+    except (ValueError, TypeError):
+        return []
 
 # =============================================================================
 # CONVERSATION CRUD OPERATIONS
