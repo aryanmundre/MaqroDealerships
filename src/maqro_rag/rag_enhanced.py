@@ -297,15 +297,16 @@ class EnhancedRAGService:
             
             price_str = f"${price:,}" if price else "Price available upon request"
             
+            # Handle features field safely
             if intent == 'general':
                 vehicle_text = template['vehicle_format'].format(
                     year=year, make=make, model=model, price=price_str, features=features
                 )
                 vehicle_text += f"\n   Match Score: {score:.1%}"
             else:
-                vehicle_text = template['vehicle_format'].format(
-                    year=year, make=make, model=model, price=price_str
-                )
+                # For non-general intents, use a simpler format without features
+                vehicle_text = f"{year} {make} {model} - {price_str}"
+                vehicle_text += f"\n   Match Score: {score:.1%}"
             
             response_parts.append(f"{i}. **{vehicle_text}**\n")
         

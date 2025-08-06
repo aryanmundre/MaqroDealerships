@@ -6,6 +6,10 @@ Test script for Maqro RAG system (without API calls).
 import sys
 from pathlib import Path
 from loguru import logger
+
+# Set up Python path
+sys.path.insert(0, './src')
+
 from maqro_rag import Config, InventoryProcessor
 
 
