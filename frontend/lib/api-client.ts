@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 
+
 // 1. Helper to get Supabase session
 async function getSupabaseAuth() {
   const { data: { session }, error } = await supabase.auth.getSession();

@@ -26,7 +26,7 @@ class LeadResponse(LeadBase):
     """Response model for leads (Supabase compatible with UUIDs)"""
     id: str = Field(..., description="UUID as string")  # Supabase uses UUIDs
     status: str
-    last_contact: str
+    last_contact_at: datetime
     message: str | None = None
     deal_value: str | None = None
     appointment_datetime: datetime | None = None
@@ -46,7 +46,7 @@ class LeadUpdate(BaseModel):
     car: str | None = None
     source: str | None = None
     status: str | None = None
-    last_contact: str | None = None
+    last_contact_at: datetime | None = None
     message: str | None = None
     deal_value: str | None = None
     appointment_datetime: datetime | None = None

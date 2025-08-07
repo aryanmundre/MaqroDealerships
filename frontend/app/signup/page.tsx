@@ -9,7 +9,7 @@ import { Eye, EyeOff, Mail, Lock, User, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { upsertUserProfile } from "@/lib/user-profile-api"
+import { createUserProfile } from "@/lib/user-profile-api"
 import { toast } from "sonner"
 
 export default function SignupPage() {
@@ -45,9 +45,9 @@ export default function SignupPage() {
       // If signup is successful and we have a user, create their profile
       if (data.user) {
         try {
-          await upsertUserProfile({
+          await createUserProfile({
             full_name: formData.name,
-            role: 'User',
+            role: 'salesperson',
             timezone: 'America/New_York',
           })
         } catch (profileError) {

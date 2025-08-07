@@ -1,15 +1,34 @@
 import { getAuthenticatedApi } from './api-client';
 import type { Lead } from './supabase';
 
-export async function getLeads(searchTerm?: string): Promise<Lead[]> {
+export async function getMyLeads(searchTerm?: string): Promise<Lead[]> {
   const api = await getAuthenticatedApi();
-  const endpoint = searchTerm ? `/leads?search=${searchTerm}` : '/leads';
+  const endpoint = searchTerm ? `/me/leads?search=${searchTerm}` : '/me/leads';
   return api.get<Lead[]>(endpoint);
 }
 
-export async function getLeadById(id: string): Promise<Lead | null> {
+export async function getMyLeadById(id: string): Promise<Lead | null> {
   const api = await getAuthenticatedApi();
-  return api.get<Lead | null>(`/leads/${id}`);
+  return api.get<Lead | null>(`/me/leads/${id}`);
+}
+
+export async function getDealershipLeads(
+  dealershipId: string,
+  searchTerm?: string
+): Promise<Lead[]> {
+  const api = await getAuthenticatedApi();
+  const endpoint = searchTerm
+    ? `/dealerships/${dealershipId}/leads?search=${encodeURIComponent(searchTerm)}`
+    : `/dealerships/${dealershipId}/leads`;
+  return api.get<Lead[]>(endpoint);
+}
+
+export async function getDealershipLeadById(
+  dealershipId: string,
+  leadId: string
+): Promise<Lead | null> {
+  const api = await getAuthenticatedApi();
+  return api.get<Lead | null>(`/dealerships/${dealershipId}/leads/${leadId}`);
 }
 
 export async function createLead(lead: Omit<Lead, 'id' | 'created_at' | 'user_id'>): Promise<Lead> {

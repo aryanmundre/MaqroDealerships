@@ -21,7 +21,7 @@ export type Lead = {
   car: string;
   source: string;
   status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold';
-  last_contact: string;
+  last_contact_at: string;
   email?: string;
   phone?: string;
   message?: string;
@@ -50,6 +50,18 @@ export type Conversation = {
   message: string;
   sender: 'customer' | 'agent'
   lead_id: string;
+}
+
+export type UserProfile ={
+  id: string
+  user_id: string
+  dealership_id?: string | null
+  full_name: string
+  phone?: string
+  role: string
+  timezone: string
+  created_at: string
+  updated_at: string
 }
 
 // Helper function to check if user is logged in
