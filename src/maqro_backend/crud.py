@@ -5,6 +5,8 @@ from .schemas.conversation import MessageCreate
 from .schemas.lead import LeadCreate
 import uuid
 from typing import List
+from datetime import datetime
+import pytz
 
 # =============================================================================
 # LEAD CRUD OPERATIONS
@@ -19,7 +21,7 @@ async def create_lead(*, session: AsyncSession, lead_in: LeadCreate, user_id: st
         car=getattr(lead_in, 'car', 'Unknown'),  # Default if not provided
         source=getattr(lead_in, 'source', 'Website'),  # Default if not provided
         status="new",  # All leads start as "new"
-        last_contact="Just now",
+        last_contact_at=datetime.now(pytz.timezone('utc')),  # Current time in UTC
         message=getattr(lead_in, 'message', ''),  # Initial message
         user_id=uuid.UUID(user_id) if user_id else None,  # Assigned salesperson (nullable)
         dealership_id=uuid.UUID(dealership_id)  # Required dealership ID
@@ -80,6 +82,8 @@ async def get_leads_by_salesperson(
         return result.scalars().all()
     except (ValueError, TypeError):
         return []
+    
+
 
 # =============================================================================
 # CONVERSATION CRUD OPERATIONS

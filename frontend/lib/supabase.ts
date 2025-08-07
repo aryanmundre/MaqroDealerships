@@ -21,7 +21,7 @@ export type Lead = {
   car: string;
   source: string;
   status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold';
-  last_contact: string;
+  last_contact_at: string;
   email?: string;
   phone?: string;
   message?: string;

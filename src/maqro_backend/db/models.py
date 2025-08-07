@@ -20,7 +20,7 @@ class Lead(Base):
     car = Column(Text, nullable=False)
     source = Column(Text, nullable=False)
     status = Column(Text, nullable=False)  # 'new', 'warm', 'hot', 'follow-up', 'cold', 'deal_won', 'deal_lost'
-    last_contact = Column(Text, nullable=False)
+    last_contact_at = Column(DateTime(timezone=True), nullable=False)
     email = Column(Text)
     phone = Column(Text)
     message = Column(Text)

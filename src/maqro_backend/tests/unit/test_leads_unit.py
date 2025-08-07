@@ -58,7 +58,7 @@ async def test_get_all_leads_unit():
     mock_lead_1.car = "Car A"
     mock_lead_1.source = "Website"
     mock_lead_1.status = "New"
-    mock_lead_1.last_contact = "Yesterday"
+    mock_lead_1.last_contact_at = datetime.now(pytz.utc)
     mock_lead_1.message = "Message 1"
     mock_lead_1.user_id = "test-user-1"
     mock_lead_1.created_at = datetime.now(pytz.utc)
@@ -97,7 +97,7 @@ async def test_get_lead_by_id_success():
     mock_lead.id = "lead-uuid-1"
     mock_lead.name = "My Lead"
     mock_lead.email="my@lead.com"; mock_lead.phone="222"; mock_lead.car="Car B"; 
-    mock_lead.source="Test"; mock_lead.status="Active"; mock_lead.last_contact="Today"; mock_lead.message="Hi"; mock_lead.created_at=datetime.now(pytz.utc)
+    mock_lead.source="Test"; mock_lead.status="Active"; mock_lead.last_contact_at=datetime.now(pytz.utc); mock_lead.message="Hi"; mock_lead.created_at=datetime.now(pytz.utc)
 
     with patch('maqro_backend.api.routes.leads.get_lead_by_id', new_callable=AsyncMock) as mock_get_from_db:
         mock_get_from_db.return_value = mock_lead
