@@ -64,7 +64,7 @@ async def send_sms(
         raise HTTPException(status_code=500, detail="Failed to send SMS")
 
 
-@router.post("/webhook")
+@router.api_route("/webhook", methods=["GET", "POST"])
 async def vonage_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db_session),
@@ -82,14 +82,20 @@ async def vonage_webhook(
     6. Sends AI response back to customer
     """
     try:
-        # Get webhook data - Vonage sends form data
-        form_data = await request.form()
-        
-        # Extract webhook parameters
-        from_number = form_data.get("msisdn")  # Customer's phone number
-        to_number = form_data.get("to")        # Your Vonage number
-        message_text = form_data.get("text")   # Customer's message
-        message_id = form_data.get("messageId") # Vonage message ID
+        # Handle both GET (query params) and POST (form data) requests
+        if request.method == "GET":
+            # Vonage sends data as query parameters
+            from_number = request.query_params.get("msisdn")
+            to_number = request.query_params.get("to")
+            message_text = request.query_params.get("text")
+            message_id = request.query_params.get("messageId")
+        else:
+            # POST - Vonage sends form data
+            form_data = await request.form()
+            from_number = form_data.get("msisdn")
+            to_number = form_data.get("to")
+            message_text = form_data.get("text")
+            message_id = form_data.get("messageId")
         
         logger.info(f"Received webhook: from={from_number}, to={to_number}, text={message_text}")
         
