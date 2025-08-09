@@ -234,6 +234,38 @@ async def vonage_webhook(
         return {"status": "error", "message": f"Internal processing error: {str(e)}"}
 
 
+@router.post("/delivery")
+async def vonage_delivery_webhook(request: Request):
+    """
+    Vonage delivery receipt webhook endpoint
+    
+    This endpoint receives delivery status updates for outbound SMS messages
+    Vonage sends delivery receipts here when SMS messages are delivered, failed, etc.
+    """
+    try:
+        # Get delivery receipt data
+        form_data = await request.form()
+        
+        # Extract delivery receipt parameters
+        message_id = form_data.get("messageId")
+        status = form_data.get("status")
+        err_code = form_data.get("err-code")
+        to = form_data.get("to")
+        network_code = form_data.get("network-code")
+        price = form_data.get("price")
+        
+        logger.info(f"Delivery receipt: messageId={message_id}, status={status}, to={to}, err_code={err_code}")
+        
+        # You can store delivery status in database if needed
+        # For now, just log the delivery status
+        
+        return {"status": "ok", "message": "Delivery receipt processed"}
+        
+    except Exception as e:
+        logger.error(f"Delivery webhook processing error: {e}")
+        return {"status": "error", "message": f"Error processing delivery receipt: {str(e)}"}
+
+
 @router.get("/webhook-test")
 async def test_webhook():
     """
