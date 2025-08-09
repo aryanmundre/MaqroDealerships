@@ -272,6 +272,67 @@ async def vonage_delivery_webhook(request: Request):
         return {"status": "error", "message": f"Error processing delivery receipt: {str(e)}"}
 
 
+@router.api_route("/webhook-simple", methods=["GET", "POST"])
+async def vonage_simple_webhook(request: Request):
+    """
+    Simple webhook endpoint for testing Vonage SMS receive/send functionality
+    Just receives a message and sends back a simple test response
+    """
+    try:
+        # Handle both GET (query params) and POST (form data) requests
+        if request.method == "GET":
+            # Vonage sends data as query parameters
+            from_number = request.query_params.get("msisdn")
+            to_number = request.query_params.get("to")
+            message_text = request.query_params.get("text")
+            message_id = request.query_params.get("messageId")
+        else:
+            # POST - Vonage sends form data
+            form_data = await request.form()
+            from_number = form_data.get("msisdn")
+            to_number = form_data.get("to")
+            message_text = form_data.get("text")
+            message_id = form_data.get("messageId")
+        
+        logger.info(f"Simple webhook received: from={from_number}, text={message_text}")
+        
+        if not from_number or not message_text:
+            logger.error("Missing required webhook parameters")
+            return {"status": "error", "message": "Missing required parameters"}
+        
+        # Normalize phone number
+        normalized_phone = sms_service.normalize_phone_number(from_number)
+        
+        # Simple test response
+        test_response = f"Hello! I received your message: '{message_text}'. This is a test response from the dealership bot."
+        
+        # Send simple response back to customer via SMS
+        sms_result = await sms_service.send_sms(normalized_phone, test_response)
+        
+        if sms_result["success"]:
+            logger.info(f"Sent test response to {normalized_phone}")
+            return {
+                "status": "success",
+                "message": "Test message processed and response sent",
+                "from": from_number,
+                "response_sent": True,
+                "test_response": test_response
+            }
+        else:
+            logger.error(f"Failed to send test response: {sms_result['error']}")
+            return {
+                "status": "error", 
+                "message": "Failed to send response",
+                "from": from_number,
+                "response_sent": False,
+                "error": sms_result["error"]
+            }
+            
+    except Exception as e:
+        logger.error(f"Simple webhook processing error: {e}")
+        return {"status": "error", "message": f"Processing error: {str(e)}"}
+
+
 @router.get("/webhook-test")
 async def test_webhook():
     """
