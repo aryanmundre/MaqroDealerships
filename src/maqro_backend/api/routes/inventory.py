@@ -52,7 +52,7 @@ async def create_inventory(
         make=inventory.make,
         model=inventory.model,
         year=inventory.year,
-        price=inventory.price,
+        price=float(inventory.price) if inventory.price else 0.0,
         mileage=inventory.mileage,
         description=inventory.description,
         features=inventory.features,
@@ -76,13 +76,20 @@ async def get_dealership_inventory(
     """
     inventory_items = await get_inventory_by_dealership(session=db, dealership_id=dealership_id)
     
-    return [
+    # Log sample items for debugging
+    if inventory_items:
+        sample_item = inventory_items[0]
+        logger.info(f"📝 Sample item: {sample_item.make} {sample_item.model} ({sample_item.year}) - ${sample_item.price}")
+    else:
+        logger.warning(f"⚠️ No inventory items found for dealership {dealership_id}")
+    
+    response_items = [
         InventoryResponse(
             id=str(item.id),
             make=item.make,
             model=item.model,
             year=item.year,
-            price=item.price,
+            price=float(item.price) if item.price else 0.0,  # Convert string to float
             mileage=item.mileage,
             description=item.description,
             features=item.features,
@@ -92,6 +99,9 @@ async def get_dealership_inventory(
             updated_at=item.updated_at
         ) for item in inventory_items
     ]
+    
+    logger.info(f"✅ Returning {len(response_items)} formatted inventory items")
+    return response_items
 
 
 @router.get("/inventory/{inventory_id}", response_model=InventoryResponse)
@@ -119,7 +129,7 @@ async def get_inventory_item(
         make=inventory.make,
         model=inventory.model,
         year=inventory.year,
-        price=inventory.price,
+        price=float(inventory.price) if inventory.price else 0.0,
         mileage=inventory.mileage,
         description=inventory.description,
         features=inventory.features,
@@ -164,7 +174,7 @@ async def update_inventory_item(
         make=inventory.make,
         model=inventory.model,
         year=inventory.year,
-        price=inventory.price,
+        price=float(inventory.price) if inventory.price else 0.0,
         mileage=inventory.mileage,
         description=inventory.description,
         features=inventory.features,

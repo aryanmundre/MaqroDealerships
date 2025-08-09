@@ -7,6 +7,9 @@ import uuid
 from typing import List
 from datetime import datetime
 import pytz
+import logging
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # LEAD CRUD OPERATIONS
@@ -298,14 +301,28 @@ async def create_inventory_item(*, session: AsyncSession, inventory_data: dict, 
 async def get_inventory_by_dealership(*, session: AsyncSession, dealership_id: str) -> list[Inventory]:
     """Get all inventory items for a dealership (Supabase RLS compatible)"""
     try:
+        logger.info(f"🔍 Searching inventory for dealership: {dealership_id}")
         dealership_uuid = uuid.UUID(dealership_id)
+        logger.info(f"🔑 Converted to UUID: {dealership_uuid}")
+        
         result = await session.execute(
             select(Inventory)
             .where(Inventory.dealership_id == dealership_uuid)
             .order_by(Inventory.created_at.desc())
         )
-        return result.scalars().all()
-    except (ValueError, TypeError):
+        inventory_items = result.scalars().all()
+        logger.info(f"📋 Found {len(inventory_items)} inventory items in database for dealership {dealership_id}")
+        
+        # Log all dealership IDs in inventory for debugging
+        all_dealership_ids = await session.execute(
+            select(Inventory.dealership_id).distinct()
+        )
+        all_ids = [str(did[0]) for did in all_dealership_ids.fetchall()]
+        logger.info(f"🏢 All dealership IDs in inventory table: {all_ids}")
+        
+        return inventory_items
+    except (ValueError, TypeError) as e:
+        logger.error(f"❌ Error querying inventory: {e}")
         return []
 
 

@@ -32,9 +32,16 @@ class InventoryUpdate(BaseModel):
     status: str | None = None
 
 
-class InventoryResponse(InventoryBase):
-    """Response model for inventory items (Supabase compatible)"""
+class InventoryResponse(BaseModel):
+    """Response model for inventory items (Frontend compatible)"""
     id: str = Field(..., description="UUID as string")
+    make: str
+    model: str
+    year: int
+    price: float  # Converting to float for frontend compatibility
+    mileage: int | None = None
+    description: str | None = None
+    features: str | None = None
     dealership_id: str = Field(..., description="Dealership UUID as string")
     status: str
     created_at: datetime

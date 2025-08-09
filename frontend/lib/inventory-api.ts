@@ -23,7 +23,8 @@ export type InventoryRow = {
 export const inventoryApi = {
   async getInventory(): Promise<Inventory[]> {
     const api = await getAuthenticatedApi();
-    return api.get<Inventory[]>('/inventory');
+    const result = await api.get<Inventory[]>('/inventory');
+    return result;
   },
 
   async uploadInventory(file: File): Promise<InventoryUploadResult> {
