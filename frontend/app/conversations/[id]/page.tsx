@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, use } from "react"
+import { useState, useEffect, use, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,8 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
   const [smsError, setSmsError] = useState<string | null>(null)
   const [sendSuccess, setSendSuccess] = useState(false)
   const [smsSuccess, setSmsSuccess] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     async function fetchData() {
@@ -43,6 +45,13 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
     }
     fetchData()
   }, [resolvedParams.id])
+
+  // Scroll to bottom on initial load and new messages  
+  useEffect(() => {
+    if (messagesContainerRef.current && messageList.length > 0) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  }, [messageList])
 
   const handleSendMessage = async () => {
     if (!customMessage.trim() || !leadData) return
@@ -124,12 +133,12 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <Card className="bg-gray-900/50 border-gray-800 h-[600px] flex flex-col">
-            <CardHeader className="border-b border-gray-800">
+            <CardHeader className="border-b border-gray-800 flex-shrink-0">
               <h3 className="font-semibold text-gray-100">Conversation</h3>
             </CardHeader>
-            <CardContent className="flex-1 p-0">
+            <CardContent className="flex-1 p-0 overflow-hidden">
               <div className="h-full flex flex-col">
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
                   {messageList.map((message) => (
                     <div
                       key={message.id}
@@ -146,12 +155,12 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
                           {message.sender === "customer" ? (
                             <User className="w-4 h-4" />
                           ) : (
-                            <User className="w-4 h-4" />
+                            <Bot className="w-4 h-4" />
                           )}
                           <span className="text-sm font-medium">
                             {message.sender === "customer"
                               ? leadData.name
-                              : "You"}
+                              : "Agent"}
                           </span>
                           <span className="text-xs opacity-70">{new Date(message.created_at).toLocaleTimeString()}</span>
                         </div>
@@ -159,9 +168,10 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
                       </div>
                     </div>
                   ))}
+                  <div ref={messagesEndRef} />
                 </div>
 
-                <div className="border-t border-gray-800 p-4">
+                <div className="border-t border-gray-800 p-4 flex-shrink-0">
                   <Tabs defaultValue="message" className="w-full">
                     <TabsList className="grid w-full grid-cols-2 bg-gray-800 border-gray-700">
                       <TabsTrigger value="message" className="flex items-center gap-2 data-[state=active]:bg-gray-700">
