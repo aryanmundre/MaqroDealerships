@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     # Supabase JWT secret for authentication
     supabase_jwt_secret: str
 
+    # Vonage SMS Configuration
+    vonage_api_key: str | None = None
+    vonage_api_secret: str | None = None
+    vonage_phone_number: str | None = None
+
     rag_config_path: str = "config.yaml"
     rag_index_name: str = "vehicle_index"
 

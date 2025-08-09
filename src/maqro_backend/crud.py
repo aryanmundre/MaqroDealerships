@@ -71,6 +71,23 @@ async def get_lead_by_email(*, session: AsyncSession, email: str, dealership_id:
     except (ValueError, TypeError):
         return None
 
+
+async def get_lead_by_phone(*, session: AsyncSession, phone: str, dealership_id: str) -> Lead | None:
+    """Get a lead by phone number for a specific dealership (Supabase RLS compatible)"""
+    try:
+        dealership_uuid = uuid.UUID(dealership_id)
+        # Normalize phone number for comparison (remove spaces, dashes, parentheses)
+        normalized_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "").replace("+", "")
+        
+        statement = select(Lead).where(
+            Lead.phone.like(f"%{normalized_phone[-10:]}%"),  # Match last 10 digits
+            Lead.dealership_id == dealership_uuid  # Filter by dealership for RLS compatibility
+        )
+        result = await session.execute(statement)
+        return result.scalar_one_or_none()
+    except (ValueError, TypeError):
+        return None
+
 async def get_leads_by_salesperson(
         *, session: AsyncSession, salesperson_id: str
 ) -> list[Lead]:
