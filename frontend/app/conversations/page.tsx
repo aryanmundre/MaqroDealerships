@@ -13,6 +13,9 @@ const statusColors = {
   hot: "bg-red-500/20 text-red-400 border-red-500/30",
   "follow-up": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   cold: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  "appointment_booked": "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  "deal_won": "bg-green-500/20 text-green-400 border-green-500/30",
+  "deal_lost": "bg-red-600/20 text-red-300 border-red-600/30",
 }
 
 const statusDescriptions = {
@@ -21,6 +24,9 @@ const statusDescriptions = {
   hot: "Lead is in a 3+ email thread with the agent",
   "follow-up": "Lead has not responded for 1-4 days",
   cold: "Lead has not responded for 4+ days",
+  "appointment_booked": "Customer has scheduled an appointment",
+  "deal_won": "Deal closed successfully",
+  "deal_lost": "Deal was lost or customer went elsewhere",
 }
 
 export default function Conversations() {

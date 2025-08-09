@@ -82,6 +82,92 @@ async def get_leads_by_salesperson(
         return result.scalars().all()
     except (ValueError, TypeError):
         return []
+
+
+async def get_leads_with_conversations_summary_by_salesperson(
+    *, session: AsyncSession, salesperson_id: str
+) -> list[dict]:
+    """
+    Return all leads with their latest conversation for a specific salesperson.
+    Uses a simple JOIN approach optimized for direct Supabase connection.
+    """
+    try:
+        salesperson_uuid = uuid.UUID(salesperson_id)
+        
+        # Simple and efficient query with LEFT JOIN
+        result = await session.execute(
+            select(
+                Lead.id,
+                Lead.name,
+                Lead.car,
+                Lead.status,
+                Lead.email,
+                Lead.phone,
+                Lead.created_at,
+                func.max(Conversation.message).label('latest_message'),
+                func.max(Conversation.created_at).label('latest_message_time'),
+                func.count(Conversation.id).label('conversation_count')
+            )
+            .outerjoin(Conversation, Conversation.lead_id == Lead.id)
+            .where(Lead.user_id == salesperson_uuid)
+            .group_by(
+                Lead.id,
+                Lead.name,
+                Lead.car,
+                Lead.status,
+                Lead.email,
+                Lead.phone,
+                Lead.created_at
+            )
+            .order_by(Lead.created_at.desc())
+        )
+        
+        def format_time_ago(date_obj):
+            if not date_obj:
+                return "Never"
+            
+            from datetime import datetime
+            import pytz
+            
+            now = datetime.now(pytz.UTC)
+            if date_obj.tzinfo is None:
+                date_obj = pytz.UTC.localize(date_obj)
+            
+            diff = now - date_obj
+            diff_mins = int(diff.total_seconds() // 60)
+            diff_hours = int(diff.total_seconds() // 3600)
+            diff_days = int(diff.total_seconds() // 86400)
+            
+            if diff_mins < 1:
+                return "Just now"
+            elif diff_mins < 60:
+                return f"{diff_mins}m ago"
+            elif diff_hours < 24:
+                return f"{diff_hours}h ago"
+            else:
+                return f"{diff_days}d ago"
+        
+        # Convert results to expected format
+        leads_with_conversations = []
+        for row in result:
+            leads_with_conversations.append({
+                'id': str(row.id),
+                'name': row.name,
+                'car': row.car or '',
+                'status': row.status,
+                'email': row.email,
+                'phone': row.phone,
+                'lastMessage': row.latest_message or 'No messages yet',
+                'lastMessageTime': format_time_ago(row.latest_message_time),
+                'unreadCount': 0,  # TODO: implement unread counting logic
+                'created_at': row.created_at.isoformat() if row.created_at else '',
+                'conversationCount': int(row.conversation_count) if row.conversation_count else 0
+            })
+        
+        return leads_with_conversations
+        
+    except (ValueError, TypeError):
+        return []
     
 
 

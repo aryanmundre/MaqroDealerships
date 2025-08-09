@@ -20,6 +20,32 @@ export async function getLeadsWithConversations(opts: {
 
   const api = await getAuthenticatedApi();
 
+  // Use optimized endpoint for 'mine' scope to eliminate N+1 queries
+  if (scope === 'mine') {
+    // TODO: Add search support to the optimized endpoint
+    if (searchTerm) {
+      console.warn('Search not yet supported with optimized endpoint, falling back to old method');
+      return getLeadsWithConversationsLegacy(opts);
+    }
+    
+    // Single optimized API call that returns leads with conversation summaries
+    return api.get<LeadWithConversationSummary[]>('/me/leads-with-conversations-summary');
+  }
+
+  // For dealership scope, fall back to the legacy method for now
+  return getLeadsWithConversationsLegacy(opts);
+}
+
+// Legacy method kept for dealership scope and search functionality
+async function getLeadsWithConversationsLegacy(opts: {
+  scope?: 'mine' | 'dealership';
+  dealershipId?: string;
+  searchTerm?: string;
+} = {}): Promise<LeadWithConversationSummary[]> {
+  const { scope = 'mine', dealershipId, searchTerm } = opts;
+
+  const api = await getAuthenticatedApi();
+
   /* ────────────────────────────────────────────────────────────────────────
      1. Figure out which lead list endpoint to hit
      ──────────────────────────────────────────────────────────────────────── */
@@ -116,12 +142,14 @@ export type LeadWithConversationSummary = {
   id: string;
   name: string;
   car: string;
-  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold';
+  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold' | 'deal_won' | 'deal_lost' | 'appointment_booked';
   email?: string;
   phone?: string;
   lastMessage: string;
   lastMessageTime: string;
   unreadCount: number;
   created_at: string;
+  deal_value?: number;
+  appointment_date?: string;
   conversationCount: number;
 };

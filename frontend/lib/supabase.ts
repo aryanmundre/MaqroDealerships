@@ -20,7 +20,7 @@ export type Lead = {
   name: string;
   car: string;
   source: string;
-  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold';
+  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold' | 'deal_won' | 'deal_lost' | 'appointment_booked';
   last_contact_at: string;
   email?: string;
   phone?: string;

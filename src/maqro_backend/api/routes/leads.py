@@ -8,7 +8,8 @@ from maqro_backend.crud import (
     get_all_leads_ordered, 
     get_lead_by_id,
     get_lead_stats,
-    get_leads_by_salesperson
+    get_leads_by_salesperson,
+    get_leads_with_conversations_summary_by_salesperson
 )
 import logging
 
@@ -44,6 +45,22 @@ async def get_my_leads(
             created_at=lead.created_at
         ) for lead in leads
     ]  
+
+@me_router.get("/leads-with-conversations-summary")
+async def get_my_leads_with_conversations_summary(
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Optimized endpoint that returns leads with their latest conversation in one query.
+    This replaces the N+1 query pattern and dramatically improves performance.
+    """
+    leads_with_conversations = await get_leads_with_conversations_summary_by_salesperson(
+        session=db, 
+        salesperson_id=user_id
+    )
+    return leads_with_conversations
+
 
 @me_router.get("/leads/{lead_id}", response_model=LeadResponse)
 async def get_my_lead_by_id(
