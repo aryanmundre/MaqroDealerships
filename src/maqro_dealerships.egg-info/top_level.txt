@@ -1,2 +1,0 @@
-maqro_backend
-maqro_rag
