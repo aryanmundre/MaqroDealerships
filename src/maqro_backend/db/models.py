@@ -3,7 +3,7 @@ SQLAlchemy models for Supabase integration
 
 These models match the Supabase schema defined in frontend/supabase/schema.sql
 """
-from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, func
+from sqlalchemy import Column, String, Text, DateTime, Integer, ForeignKey, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -122,7 +122,7 @@ class PendingApproval(Base):
     customer_phone = Column(Text, nullable=False)
     status = Column(Text, nullable=False, default="pending")  # 'pending', 'approved', 'rejected', 'expired'
     dealership_id = Column(UUID(as_uuid=True), ForeignKey("dealerships.id"), nullable=False)
-    expires_at = Column(DateTime(timezone=True), server_default=func.now() + func.make_interval(hours=1))
+    expires_at = Column(DateTime(timezone=True), server_default=text("now() + interval '1 hour'"))
 
     # Relationships
     lead = relationship("Lead", back_populates="pending_approvals")
