@@ -151,17 +151,20 @@ class SalespersonSMSService:
                     "message": "Please provide both name and phone number for the lead."
                 }
             
-            # Create lead data
+            # Create lead data with robust fallbacks
+            source_value = parsed_data.get("source") or "SMS Lead Creation"  # Handle None values
+            car_interest_value = parsed_data.get("car_interest") or "Unknown"
+            
             lead_data = LeadCreate(
                 name=parsed_data["name"],
                 phone=parsed_data["phone"],
                 email=parsed_data.get("email"),
-                car_interest=parsed_data.get("car_interest", "Unknown"),  # LLM extracts 'car_interest', matches DB field
-                source=parsed_data.get("source", "SMS Lead Creation"),
-                max_price=parsed_data.get("price_range", None),  # Map price_range to max_price
+                car_interest=car_interest_value,  # LLM extracts 'car_interest', matches DB field
+                source=source_value,  # Ensure never None
+                max_price=parsed_data.get("price_range"),  # Allow None for optional field
                 message=f"Lead created via SMS by {salesperson.full_name}. "
-                        f"Car interest: {parsed_data.get('car_interest', 'Unknown')}. "
-                        f"Price range: {parsed_data.get('price_range', 'Not specified')}."
+                        f"Car interest: {car_interest_value}. "
+                        f"Price range: {parsed_data.get('price_range') or 'Not specified'}."
             )
             
             # Create the lead
