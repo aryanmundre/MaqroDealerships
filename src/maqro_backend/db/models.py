@@ -17,7 +17,7 @@ class Lead(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     name = Column(Text, nullable=False)
-    car = Column(Text, nullable=False)
+    car_interest = Column(Text, nullable=False)  # Renamed from 'car' to support types like 'sedan', 'Toyota Camry sedan'
     source = Column(Text, nullable=False)
     status = Column(Text, nullable=False)  # 'new', 'warm', 'hot', 'follow-up', 'cold', 'appointment_booked', 'deal_won', 'deal_lost'
     last_contact_at = Column(DateTime(timezone=True), nullable=False)
@@ -25,6 +25,7 @@ class Lead(Base):
     phone = Column(Text)
     message = Column(Text)
     deal_value = Column(String)  # Using String to match DECIMAL(10,2)
+    max_price = Column(Text)  # Maximum price range for the lead (flexible text format)
     appointment_datetime = Column(DateTime(timezone=True))
     user_id = Column(UUID(as_uuid=True))  # Assigned salesperson (nullable)
     dealership_id = Column(UUID(as_uuid=True), ForeignKey("dealerships.id"), nullable=False)
@@ -62,6 +63,7 @@ class Inventory(Base):
     mileage = Column(Integer)
     description = Column(Text)
     features = Column(Text)
+    condition = Column(Text)  # Physical condition of the vehicle (excellent, good, fair, poor, etc.)
     dealership_id = Column(UUID(as_uuid=True), ForeignKey("dealerships.id"), nullable=False)
     status = Column(Text, default="active")  # 'active', 'sold', 'pending'
 

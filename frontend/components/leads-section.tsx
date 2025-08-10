@@ -98,7 +98,7 @@ export function LeadsSection({ searchTerm = "" }: LeadsSectionProps) {
                         </div>
                         <div>
                           <h4 className="font-semibold text-gray-100">{lead.name}</h4>
-                          <p className="text-gray-400 text-sm">{lead.car}</p>
+                          <p className="text-gray-400 text-sm">{lead.car_interest}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <SourceIcon className="w-4 h-4 text-gray-500" />
                             <span className="text-gray-500 text-sm">{lead.source}</span>

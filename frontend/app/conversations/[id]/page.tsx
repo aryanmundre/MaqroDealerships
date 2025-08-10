@@ -121,7 +121,7 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
             </Badge>
           </div>
           <div className="flex items-center gap-4 text-gray-400 text-sm">
-            <span>{leadData.car}</span>
+            <span>{leadData.car_interest}</span>
             <span>•</span>
             <span>{leadData.phone}</span>
             <span>•</span>
@@ -263,7 +263,7 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
               </div>
               <div>
                 <label className="text-sm text-gray-400">Vehicle Interest</label>
-                <p className="text-gray-100 font-medium">{leadData.car}</p>
+                <p className="text-gray-100 font-medium">{leadData.car_interest}</p>
               </div>
               <div>
                 <label className="text-sm text-gray-400">Phone</label>

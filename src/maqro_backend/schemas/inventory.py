@@ -13,6 +13,7 @@ class InventoryBase(BaseModel):
     mileage: int | None = None
     description: str | None = None
     features: str | None = None
+    condition: str | None = None
 
 
 class InventoryCreate(InventoryBase):
@@ -29,6 +30,7 @@ class InventoryUpdate(BaseModel):
     mileage: int | None = None
     description: str | None = None
     features: str | None = None
+    condition: str | None = None
     status: str | None = None
 
 
@@ -42,6 +44,7 @@ class InventoryResponse(BaseModel):
     mileage: int | None = None
     description: str | None = None
     features: str | None = None
+    condition: str | None = None
     dealership_id: str = Field(..., description="Dealership UUID as string")
     status: str
     created_at: datetime

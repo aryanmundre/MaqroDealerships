@@ -157,11 +157,32 @@ async def vonage_webhook(
             # Create new lead from SMS
             logger.info(f"Creating new lead for phone number: {normalized_phone}")
             
+            # Extract information from message if possible (basic extraction)
+            extracted_name = None
+            extracted_car = "Unknown"
+            
+            # Simple extraction patterns - you can enhance this with LLM later
+            message_lower = message_text.lower()
+            if "my name is" in message_lower:
+                try:
+                    # Extract name after "my name is"
+                    name_part = message_text[message_lower.find("my name is") + 11:].strip()
+                    extracted_name = name_part.split()[0] if name_part else None
+                except:
+                    pass
+            
+            # Extract car interest
+            car_keywords = ["toyota", "honda", "ford", "bmw", "mercedes", "audi", "lexus", "nissan", "mazda"]
+            for keyword in car_keywords:
+                if keyword in message_lower:
+                    extracted_car = keyword.title()
+                    break
+            
             lead_data = LeadCreate(
-                name=f"SMS Lead {normalized_phone}",  # Default name - can be updated later
+                name=extracted_name,  # Will auto-generate if None
                 phone=normalized_phone,
                 email=None,
-                car="Unknown",  # Default - can be updated based on conversation
+                car_interest=extracted_car,
                 source="SMS",
                 message=message_text
             )

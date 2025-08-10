@@ -17,15 +17,32 @@ logger = logging.getLogger(__name__)
 
 async def create_lead(*, session: AsyncSession, lead_in: LeadCreate, user_id: str, dealership_id: str) -> Lead:
     """Create a new lead with Supabase compatibility"""
+    
+    # Auto-generate name if not provided
+    lead_name = lead_in.name
+    if not lead_name:
+        if lead_in.phone:
+            # Use phone number for name
+            lead_name = f"SMS Lead {lead_in.phone}"
+        elif lead_in.email:
+            # Use email for name
+            lead_name = f"Lead {lead_in.email.split('@')[0]}"
+        else:
+            # Fallback to generic name with timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%m%d_%H%M")
+            lead_name = f"New Lead {timestamp}"
+    
     db_obj = Lead(
-        name=lead_in.name,
+        name=lead_name,
         email=lead_in.email,
         phone=lead_in.phone,
-        car=getattr(lead_in, 'car', 'Unknown'),  # Default if not provided
+        car_interest=getattr(lead_in, 'car_interest', 'Unknown'),  # Default if not provided
         source=getattr(lead_in, 'source', 'Website'),  # Default if not provided
         status="new",  # All leads start as "new"
         last_contact_at=datetime.now(pytz.timezone('utc')),  # Current time in UTC
         message=getattr(lead_in, 'message', ''),  # Initial message
+        max_price=getattr(lead_in, 'max_price', None),  # Maximum price range
         user_id=uuid.UUID(user_id) if user_id else None,  # Assigned salesperson (nullable)
         dealership_id=uuid.UUID(dealership_id)  # Required dealership ID
     )
@@ -119,7 +136,7 @@ async def get_leads_with_conversations_summary_by_salesperson(
             select(
                 Lead.id,
                 Lead.name,
-                Lead.car,
+                Lead.car_interest,
                 Lead.status,
                 Lead.email,
                 Lead.phone,
@@ -133,7 +150,7 @@ async def get_leads_with_conversations_summary_by_salesperson(
             .group_by(
                 Lead.id,
                 Lead.name,
-                Lead.car,
+                Lead.car_interest,
                 Lead.status,
                 Lead.email,
                 Lead.phone,
@@ -173,7 +190,7 @@ async def get_leads_with_conversations_summary_by_salesperson(
             leads_with_conversations.append({
                 'id': str(row.id),
                 'name': row.name,
-                'car': row.car or '',
+                'car_interest': row.car_interest or '',
                 'status': row.status,
                 'email': row.email,
                 'phone': row.phone,
@@ -304,6 +321,7 @@ async def create_inventory_item(*, session: AsyncSession, inventory_data: dict, 
             mileage=inventory_data.get('mileage'),
             description=inventory_data.get('description'),
             features=inventory_data.get('features'),
+            condition=inventory_data.get('condition'),
             dealership_id=dealership_uuid,
             status=inventory_data.get('status', 'active')
         )
@@ -371,6 +389,7 @@ async def bulk_create_inventory_items(
                 mileage=item.get('mileage'),
                 description=item.get('description'),
                 features=item.get('features'),
+                condition=item.get('condition'),
                 dealership_id=dealership_uuid,
                 status=item.get('status', 'active')
             ) for item in inventory_data

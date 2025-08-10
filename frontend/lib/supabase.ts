@@ -18,13 +18,14 @@ export type Lead = {
   id: string;
   created_at: string;
   name: string;
-  car: string;
+  car_interest: string;
   source: string;
   status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold' | 'deal_won' | 'deal_lost' | 'appointment_booked';
   last_contact_at: string;
   email?: string;
   phone?: string;
   message?: string;
+  max_price?: string;
   user_id: string; // Foreign key to auth.users
   conversations?: Conversation[];
 };
@@ -40,6 +41,7 @@ export type Inventory = {
   mileage?: number;
   description?: string;
   features?: string;
+  condition?: string;
   dealership_id: string; // Foreign key to auth.users
   status: 'active' | 'sold' | 'pending';
 };

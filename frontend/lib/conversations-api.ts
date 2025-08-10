@@ -80,7 +80,7 @@ async function getLeadsWithConversationsLegacy(opts: {
         return {
           id: lead.id,
           name: lead.name,
-          car: lead.car ?? '',
+          car_interest: lead.car_interest ?? '',
           status: lead.status,
           email: lead.email,
           phone: lead.phone,
@@ -97,7 +97,7 @@ async function getLeadsWithConversationsLegacy(opts: {
         return {
           id: lead.id,
           name: lead.name,
-          car: lead.car ?? '',
+          car_interest: lead.car_interest ?? '',
           status: lead.status,
           email: lead.email,
           phone: lead.phone,
@@ -141,7 +141,7 @@ function formatTimeAgo(dateString: string): string {
 export type LeadWithConversationSummary = {
   id: string;
   name: string;
-  car: string;
+  car_interest: string;
   status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold' | 'deal_won' | 'deal_lost' | 'appointment_booked';
   email?: string;
   phone?: string;

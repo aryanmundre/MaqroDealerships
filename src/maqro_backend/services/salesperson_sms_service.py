@@ -156,8 +156,9 @@ class SalespersonSMSService:
                 name=parsed_data["name"],
                 phone=parsed_data["phone"],
                 email=parsed_data.get("email"),
-                car=parsed_data.get("car_interest", "Unknown"),  # LLM extracts 'car_interest', DB expects 'car'
+                car_interest=parsed_data.get("car_interest", "Unknown"),  # LLM extracts 'car_interest', matches DB field
                 source=parsed_data.get("source", "SMS Lead Creation"),
+                max_price=parsed_data.get("price_range", None),  # Map price_range to max_price
                 message=f"Lead created via SMS by {salesperson.full_name}. "
                         f"Car interest: {parsed_data.get('car_interest', 'Unknown')}. "
                         f"Price range: {parsed_data.get('price_range', 'Not specified')}."
@@ -187,7 +188,7 @@ class SalespersonSMSService:
                           f"Name: {lead.name}\n"
                           f"Phone: {lead.phone}\n"
                           f"Email: {lead.email or 'Not provided'}\n"
-                          f"Car Interest: {lead.car}\n"
+                          f"Car Interest: {lead.car_interest}\n"
                           f"Price Range: {parsed_data.get('price_range', 'Not specified')}\n"
                           f"Lead ID: {lead.id}\n\n"
                           f"The lead has been assigned to you and added to your pipeline.",
@@ -234,6 +235,7 @@ class SalespersonSMSService:
                 "mileage": parsed_data.get("mileage"),
                 "description": parsed_data.get("description", f"{parsed_data['year']} {parsed_data['make']} {parsed_data['model']}"),
                 "features": parsed_data.get("features", ""),
+                "condition": parsed_data.get("condition", "Unknown"),  # Add condition field
                 "status": "active"
             }
             

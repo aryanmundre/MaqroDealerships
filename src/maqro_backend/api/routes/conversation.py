@@ -124,7 +124,7 @@ async def get_conversations_with_lead_info(
             name=lead.name,
             email=lead.email,
             phone=lead.phone,
-            car=lead.car,
+            car_interest=lead.car_interest,
             source=lead.source,
             status=lead.status,
             last_contact_at=lead.last_contact_at,

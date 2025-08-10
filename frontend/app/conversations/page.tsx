@@ -76,7 +76,7 @@ export default function Conversations() {
       return conversations.filter(
         (conversation) =>
           conversation.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (conversation.car && conversation.car.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (conversation.car_interest && conversation.car_interest.toLowerCase().includes(searchTerm.toLowerCase())) ||
           conversation.lastMessage.toLowerCase().includes(searchTerm.toLowerCase()) ||
           conversation.status.toLowerCase().includes(searchTerm.toLowerCase()),
       )
@@ -174,7 +174,7 @@ export default function Conversations() {
                           </span>
                         )}
                       </div>
-                      <p className="text-gray-400 text-sm mb-1">{conversation.car}</p>
+                      <p className="text-gray-400 text-sm mb-1">{conversation.car_interest}</p>
                       <p className="text-gray-300 text-sm">{conversation.lastMessage}</p>
                     </div>
                   </div>
