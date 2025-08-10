@@ -40,7 +40,7 @@ class InventoryResponse(BaseModel):
     make: str
     model: str
     year: int
-    price: float  # Converting to float for frontend compatibility
+    price: str  # Keep as string to handle "TBD", "Call for price" etc.
     mileage: int | None = None
     description: str | None = None
     features: str | None = None

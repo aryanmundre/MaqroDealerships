@@ -20,6 +20,10 @@ RENAME COLUMN car TO car_interest;
 ALTER TABLE inventory 
 ADD COLUMN condition TEXT;
 
+-- 4. Convert price column from DECIMAL/NUMERIC to TEXT to allow flexible pricing like "TBD", "Call for price", etc.
+ALTER TABLE inventory 
+ALTER COLUMN price TYPE TEXT;
+
 -- Update any existing NULL car_interest values to 'Unknown' for consistency
 UPDATE leads 
 SET car_interest = 'Unknown' 
@@ -34,6 +38,7 @@ WHERE condition IS NULL;
 COMMENT ON COLUMN leads.max_price IS 'Maximum price range for the lead (stored as text for flexibility: "25000", "25K", "TBD", etc.)';
 COMMENT ON COLUMN leads.car_interest IS 'Type of car the lead is interested in (can include type like "Toyota Camry sedan" or just "sedan")';
 COMMENT ON COLUMN inventory.condition IS 'Physical condition of the vehicle (excellent, good, fair, poor, etc.)';
+COMMENT ON COLUMN inventory.price IS 'Vehicle price (stored as text for flexibility: "25000", "TBD", "Call for price", etc.)';
 
 -- Commit transaction
 COMMIT;

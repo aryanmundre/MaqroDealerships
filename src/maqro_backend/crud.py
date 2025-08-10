@@ -29,7 +29,6 @@ async def create_lead(*, session: AsyncSession, lead_in: LeadCreate, user_id: st
             lead_name = f"Lead {lead_in.email.split('@')[0]}"
         else:
             # Fallback to generic name with timestamp
-            from datetime import datetime
             timestamp = datetime.now().strftime("%m%d_%H%M")
             lead_name = f"New Lead {timestamp}"
     
