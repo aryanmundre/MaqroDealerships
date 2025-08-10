@@ -60,6 +60,10 @@ Extract information for these message types:
    - Extract: lead_identifier, update_type (progress, outcome, next_steps), details
    - Example: "Lead John Smith is coming in for test drive tomorrow" or "Customer #123 decided to go with the Honda"
 
+7. TEST_DRIVE_SCHEDULING: When a salesperson receives a text about scheduling a test drive
+   - Extract: customer_name, customer_phone, vehicle_interest, preferred_date, preferred_time, special_requests
+   - Example: "Customer Sarah wants to test drive the 2020 Toyota Camry tomorrow at 2pm. Her number is 555-1234. She mentioned she has a 2-hour window."
+
 Return ONLY a valid JSON object with the extracted data. If you can't extract certain fields, use null. Always include a "type" field indicating the message type.
 
 For lead creation, the JSON should look like:
@@ -120,6 +124,17 @@ For status updates, the JSON should look like:
   "lead_identifier": "John Smith",
   "update_type": "progress",
   "details": "Coming in for test drive tomorrow"
+}
+
+For test drive scheduling, the JSON should look like:
+{
+  "type": "test_drive_scheduling",
+  "customer_name": "Sarah Johnson",
+  "customer_phone": "555-1234",
+  "vehicle_interest": "2020 Toyota Camry",
+  "preferred_date": "tomorrow",
+  "preferred_time": "2pm",
+  "special_requests": "2-hour window"
 }"""
 
     def parse_message(self, message: str) -> Dict[str, Any]:
@@ -334,6 +349,19 @@ For status updates, the JSON should look like:
                     "lead_identifier": "Unknown",
                     "update_type": "progress",
                     "details": message
+                },
+                "confidence": "low"
+            }
+        elif any(word in message_lower for word in ["test drive", "schedule", "appointment"]) and any(word in message_lower for word in ["customer", "wants", "interested"]):
+            return {
+                "type": "test_drive_scheduling",
+                "data": {
+                    "customer_name": "Unknown",
+                    "customer_phone": "Unknown",
+                    "vehicle_interest": "Unknown",
+                    "preferred_date": "Unknown",
+                    "preferred_time": "Unknown",
+                    "special_requests": "None"
                 },
                 "confidence": "low"
             }

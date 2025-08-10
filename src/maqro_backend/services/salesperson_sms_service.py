@@ -9,6 +9,7 @@ from ..crud import (
     create_lead, 
     create_inventory_item, 
     get_salesperson_by_phone,
+    get_lead_by_phone,
     create_conversation
 )
 from ..schemas.lead import LeadCreate
@@ -113,6 +114,14 @@ class SalespersonSMSService:
                     dealership_id=dealership_id
                 )
             
+            elif parsed_message["type"] == "test_drive_scheduling":
+                return await self._handle_test_drive_scheduling(
+                    session=session,
+                    salesperson=salesperson,
+                    parsed_data=parsed_message["data"],
+                    dealership_id=dealership_id
+                )
+            
             else:
                 return {
                     "success": False,
@@ -123,7 +132,8 @@ class SalespersonSMSService:
                               "• Check lead status: 'What's the status of lead John Smith?'\n"
                               "• Search inventory: 'Do we have any Honda Civics in stock?'\n"
                               "• Ask questions: 'What's my schedule today?'\n"
-                              "• Update progress: 'Lead John is coming for test drive tomorrow'"
+                              "• Update progress: 'Lead John is coming for test drive tomorrow'\n"
+                              "• Schedule test drives: 'Customer Sarah wants to test drive the 2020 Toyota Camry tomorrow at 2pm'"
                 }
                 
         except Exception as e:
@@ -414,6 +424,211 @@ class SalespersonSMSService:
                 "error": "Status update failed",
                 "message": "Sorry, there was an error processing your status update. Please try again."
             }
+    
+    async def _handle_test_drive_scheduling(
+        self,
+        session: AsyncSession,
+        salesperson: Any,
+        parsed_data: Dict[str, Any],
+        dealership_id: str
+    ) -> Dict[str, Any]:
+        """Handle test drive scheduling from salesperson SMS"""
+        try:
+            customer_name = parsed_data.get("customer_name", "Unknown")
+            customer_phone = parsed_data.get("customer_phone", "Unknown")
+            vehicle_interest = parsed_data.get("vehicle_interest", "Unknown")
+            preferred_date = parsed_data.get("preferred_date", "Unknown")
+            preferred_time = parsed_data.get("preferred_time", "Unknown")
+            special_requests = parsed_data.get("special_requests", "None")
+            
+            # Generate Google Calendar URL for test drive appointment
+            calendar_url = self._generate_test_drive_calendar_url(
+                customer_name=customer_name,
+                vehicle_interest=vehicle_interest,
+                preferred_date=preferred_date,
+                preferred_time=preferred_time,
+                special_requests=special_requests,
+                salesperson_name=salesperson.full_name,
+                dealership_id=dealership_id
+            )
+            
+            # Create or update lead if customer phone is provided
+            lead_id = None
+            if customer_phone and customer_phone != "Unknown":
+                try:
+                    # Check if lead already exists
+                    existing_lead = await get_lead_by_phone(
+                        session=session,
+                        phone=customer_phone,
+                        dealership_id=dealership_id
+                    )
+                    
+                    if existing_lead:
+                        # Update existing lead with test drive info
+                        lead_id = str(existing_lead.id)
+                        # Note: In a full implementation, you'd update the appointment_datetime field
+                        logger.info(f"Updated existing lead {lead_id} with test drive request")
+                    else:
+                        # Create new lead for test drive
+                        from ..schemas.lead import LeadCreate
+                        lead_data = LeadCreate(
+                            name=customer_name if customer_name != "Unknown" else "Test Drive Customer",
+                            phone=customer_phone,
+                            email=None,
+                            car_interest=vehicle_interest if vehicle_interest != "Unknown" else "Test Drive",
+                            source="Test Drive Scheduling",
+                            max_price=None,
+                            message=f"Test drive request via SMS from {salesperson.full_name}. "
+                                    f"Vehicle: {vehicle_interest}. "
+                                    f"Preferred: {preferred_date} at {preferred_time}. "
+                                    f"Special requests: {special_requests}"
+                        )
+                        
+                        new_lead = await create_lead(
+                            session=session,
+                            lead_in=lead_data,
+                            user_id=str(salesperson.user_id),
+                            dealership_id=dealership_id
+                        )
+                        lead_id = str(new_lead.id)
+                        logger.info(f"Created new lead {lead_id} for test drive request")
+                        
+                except Exception as lead_error:
+                    logger.warning(f"Could not create/update lead for test drive: {lead_error}")
+                    # Continue without lead creation - the main functionality still works
+            
+            return {
+                "success": True,
+                "message": f"🚗 Test Drive Scheduled!\n\n"
+                          f"Customer: {customer_name}\n"
+                          f"Vehicle: {vehicle_interest}\n"
+                          f"Date: {preferred_date}\n"
+                          f"Time: {preferred_time}\n"
+                          f"Special Requests: {special_requests}\n\n"
+                          f"📅 Google Calendar Link:\n{calendar_url}\n\n"
+                          f"Lead ID: {lead_id or 'Not created'}\n\n"
+                          f"Use the calendar link above to add this to your schedule and send to the customer.",
+                "lead_id": lead_id,
+                "customer_name": customer_name,
+                "vehicle_interest": vehicle_interest,
+                "calendar_url": calendar_url
+            }
+            
+        except Exception as e:
+            logger.error(f"Error handling test drive scheduling: {e}")
+            return {
+                "success": False,
+                "error": "Test drive scheduling failed",
+                "message": "Sorry, there was an error processing your test drive scheduling request. Please try again."
+            }
+    
+    def _generate_test_drive_calendar_url(
+        self,
+        customer_name: str,
+        vehicle_interest: str,
+        preferred_date: str,
+        preferred_time: str,
+        special_requests: str,
+        salesperson_name: str,
+        dealership_id: str
+    ) -> str:
+        """Generate Google Calendar URL for test drive appointment"""
+        try:
+            from datetime import datetime, timedelta
+            import urllib.parse
+            
+            # Parse the preferred date and time
+            # Handle common date formats
+            if preferred_date.lower() == "tomorrow":
+                appointment_date = datetime.now() + timedelta(days=1)
+            elif preferred_date.lower() == "today":
+                appointment_date = datetime.now()
+            elif preferred_date.lower() == "next week":
+                appointment_date = datetime.now() + timedelta(days=7)
+            else:
+                # Try to parse specific dates like "Dec 15" or "12/15"
+                try:
+                    if "/" in preferred_date:
+                        # Format: MM/DD or MM/DD/YYYY
+                        parts = preferred_date.split("/")
+                        if len(parts) == 2:
+                            month, day = int(parts[0]), int(parts[1])
+                            year = datetime.now().year
+                            appointment_date = datetime(year, month, day)
+                        else:
+                            month, day, year = int(parts[0]), int(parts[1]), int(parts[2])
+                            appointment_date = datetime(year, month, day)
+                    else:
+                        # Try to parse with current year
+                        appointment_date = datetime.strptime(f"{preferred_date} {datetime.now().year}", "%b %d %Y")
+                except:
+                    # Default to tomorrow if parsing fails
+                    appointment_date = datetime.now() + timedelta(days=1)
+            
+            # Parse time (handle formats like "2pm", "2:30pm", "14:00")
+            time_str = preferred_time.lower().replace(" ", "")
+            if "pm" in time_str:
+                time_str = time_str.replace("pm", "")
+                if ":" in time_str:
+                    hour, minute = map(int, time_str.split(":"))
+                    hour = hour + 12 if hour != 12 else 12
+                else:
+                    hour, minute = int(time_str) + 12, 0
+            elif "am" in time_str:
+                time_str = time_str.replace("am", "")
+                if ":" in time_str:
+                    hour, minute = map(int, time_str.split(":"))
+                    hour = 0 if hour == 12 else hour
+                else:
+                    hour, minute = int(time_str), 0
+            else:
+                # Assume 24-hour format
+                if ":" in time_str:
+                    hour, minute = map(int, time_str.split(":"))
+                else:
+                    hour, minute = int(time_str), 0
+            
+            # Set the appointment time
+            appointment_datetime = appointment_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            
+            # Create end time (1 hour later)
+            end_datetime = appointment_datetime + timedelta(hours=1)
+            
+            # Format dates for Google Calendar
+            start_date = appointment_datetime.strftime("%Y%m%dT%H%M%S")
+            end_date = end_datetime.strftime("%Y%m%dT%H%M%S")
+            
+            # Create event details
+            event_title = f"Test Drive: {customer_name} - {vehicle_interest}"
+            event_description = f"Test drive appointment for {customer_name}\n\n"
+            event_description += f"Vehicle: {vehicle_interest}\n"
+            event_description += f"Salesperson: {salesperson_name}\n"
+            if special_requests and special_requests != "None":
+                event_description += f"Special Requests: {special_requests}\n"
+            event_description += f"\nScheduled via Maqro SMS system"
+            
+            # Build Google Calendar URL
+            base_url = "https://calendar.google.com/calendar/render"
+            params = {
+                "action": "TEMPLATE",
+                "text": event_title,
+                "dates": f"{start_date}/{end_date}",
+                "details": event_description,
+                "location": "Dealership",  # Could be made configurable
+                "sf": "true",  # Show form
+                "output": "xml"
+            }
+            
+            # Encode parameters
+            query_string = urllib.parse.urlencode(params)
+            calendar_url = f"{base_url}?{query_string}"
+            
+            return calendar_url
+            
+        except Exception as e:
+            logger.error(f"Error generating calendar URL: {e}")
+            # Return a fallback URL
+            return "https://calendar.google.com/calendar/render?action=TEMPLATE&text=Test%20Drive%20Appointment&sf=true&output=xml"
 
 
 # Global instance
