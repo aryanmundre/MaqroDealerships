@@ -124,7 +124,10 @@ async def vonage_webhook(
             dealership_id=default_dealership_id
         )
         
+        logger.info(f"Checking for salesperson with phone {normalized_phone}: {'Found' if salesperson_profile else 'Not found'}")
+        
         if salesperson_profile:
+            logger.info(f"Found salesperson {salesperson_profile.user_id}, checking for pending approval")
             # Check if they have a pending approval
             pending_approval = await get_pending_approval_by_user(
                 session=db,
@@ -132,16 +135,21 @@ async def vonage_webhook(
                 dealership_id=default_dealership_id
             )
             
+            logger.info(f"Pending approval: {'Found' if pending_approval else 'Not found'}")
+            logger.info(f"Is approval command '{message_text}': {is_approval_command(message_text)}")
+            
             if pending_approval and is_approval_command(message_text):
                 # This is an approval/rejection command
                 approval_decision = parse_approval_command(message_text)
                 
                 if approval_decision == "approved":
+                    logger.info(f"Approval decision: approved. Sending RAG response to customer {pending_approval.customer_phone}")
                     # Send the generated response to the customer
                     sms_result = await sms_service.send_sms(
                         pending_approval.customer_phone, 
                         pending_approval.generated_response
                     )
+                    logger.info(f"SMS send result: {sms_result}")
                     
                     # Update approval status
                     await update_approval_status(
