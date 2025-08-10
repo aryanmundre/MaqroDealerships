@@ -17,7 +17,13 @@ from ...crud import (
     create_lead, 
     create_conversation,
     get_all_conversation_history,
-    get_user_profile_by_user_id
+    get_user_profile_by_user_id,
+    get_salesperson_by_phone,
+    create_pending_approval,
+    get_pending_approval_by_user,
+    update_approval_status,
+    is_approval_command,
+    parse_approval_command
 )
 from ...schemas.lead import LeadCreate
 from ...services.ai_services import get_last_customer_message
@@ -111,8 +117,89 @@ async def vonage_webhook(
         # Use specific dealership ID for testing
         default_dealership_id = "d660c7d6-99e2-4fa8-b99b-d221def53d20"
         
-        # Check if this is a salesperson message (they would have a user profile)
-        # Try to process as salesperson message first
+        # FIRST: Check if this is an approval/rejection from a salesperson with pending approval
+        salesperson_profile = await get_salesperson_by_phone(
+            session=db,
+            phone=normalized_phone,
+            dealership_id=default_dealership_id
+        )
+        
+        if salesperson_profile:
+            # Check if they have a pending approval
+            pending_approval = await get_pending_approval_by_user(
+                session=db,
+                user_id=str(salesperson_profile.user_id),
+                dealership_id=default_dealership_id
+            )
+            
+            if pending_approval and is_approval_command(message_text):
+                # This is an approval/rejection command
+                approval_decision = parse_approval_command(message_text)
+                
+                if approval_decision == "approved":
+                    # Send the generated response to the customer
+                    sms_result = await sms_service.send_sms(
+                        pending_approval.customer_phone, 
+                        pending_approval.generated_response
+                    )
+                    
+                    # Update approval status
+                    await update_approval_status(
+                        session=db,
+                        approval_id=str(pending_approval.id),
+                        status="approved"
+                    )
+                    
+                    # Save agent response to conversation history
+                    await create_conversation(
+                        session=db,
+                        lead_id=str(pending_approval.lead_id),
+                        message=pending_approval.generated_response,
+                        sender="agent"
+                    )
+                    
+                    if sms_result["success"]:
+                        return {
+                            "status": "success",
+                            "message": "Response approved and sent to customer",
+                            "approval_id": str(pending_approval.id),
+                            "sent_to_customer": True
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "message": "Response approved but failed to send to customer",
+                            "approval_id": str(pending_approval.id),
+                            "error": sms_result["error"]
+                        }
+                        
+                elif approval_decision == "rejected":
+                    # Mark as rejected, don't send to customer
+                    await update_approval_status(
+                        session=db,
+                        approval_id=str(pending_approval.id),
+                        status="rejected"
+                    )
+                    
+                    return {
+                        "status": "success",
+                        "message": "Response rejected, not sent to customer",
+                        "approval_id": str(pending_approval.id),
+                        "sent_to_customer": False
+                    }
+                else:
+                    # Unknown command, let them know
+                    help_message = "I didn't understand. Reply with 'YES' to send the response to the customer, or 'NO' to reject it."
+                    await sms_service.send_sms(normalized_phone, help_message)
+                    
+                    return {
+                        "status": "help_sent",
+                        "message": "Sent help message for approval command",
+                        "approval_id": str(pending_approval.id)
+                    }
+        
+        # SECOND: Check if this is a salesperson message (they would have a user profile)
+        # Try to process as salesperson message (existing logic)
         salesperson_result = await salesperson_sms_service.process_salesperson_message(
             session=db,
             from_number=normalized_phone,
@@ -200,27 +287,40 @@ async def vonage_webhook(
                     
                     ai_response_text = enhanced_response['response_text']
                     
-                    # Send RAG response to assigned salesperson for verification
-                    verification_message = f"RAG Response for {existing_lead.name} ({normalized_phone}):\n\nCustomer: {message_text}\n\nSuggested Reply: {ai_response_text}"
+                    # Create pending approval for the RAG response
+                    pending_approval = await create_pending_approval(
+                        session=db,
+                        lead_id=str(existing_lead.id),
+                        user_id=str(existing_lead.user_id),
+                        customer_message=message_text,
+                        generated_response=ai_response_text,
+                        customer_phone=normalized_phone,
+                        dealership_id=default_dealership_id
+                    )
+                    
+                    # Send verification message to salesperson
+                    verification_message = f"RAG Response for {existing_lead.name} ({normalized_phone}):\n\nCustomer: {message_text}\n\nSuggested Reply: {ai_response_text}\n\n📱 Reply 'YES' to send or 'NO' to reject."
                     
                     sms_result = await sms_service.send_sms(assigned_user.phone, verification_message)
                     
                     if sms_result["success"]:
-                        logger.info(f"Sent RAG response to user {existing_lead.user_id} for verification")
+                        logger.info(f"Created pending approval {pending_approval.id} and sent to user {existing_lead.user_id}")
                         return {
                             "status": "success",
-                            "message": "RAG response sent to assigned user for verification",
+                            "message": "RAG response pending approval from assigned user",
                             "lead_id": str(existing_lead.id),
+                            "approval_id": str(pending_approval.id),
                             "sent_to": assigned_user.phone,
                             "response_sent": True,
                             "rag_response": ai_response_text
                         }
                     else:
-                        logger.error(f"Failed to send RAG response to user: {sms_result['error']}")
+                        logger.error(f"Failed to send verification message to user: {sms_result['error']}")
                         return {
                             "status": "error",
-                            "message": "Failed to send RAG response to assigned user",
+                            "message": "Failed to send verification message to assigned user",
                             "lead_id": str(existing_lead.id),
+                            "approval_id": str(pending_approval.id),
                             "error": sms_result["error"]
                         }
                         

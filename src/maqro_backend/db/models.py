@@ -33,6 +33,7 @@ class Lead(Base):
     # Relationships
     conversations = relationship("Conversation", back_populates="lead", cascade="all, delete-orphan")
     dealership = relationship("Dealership", back_populates="leads")
+    pending_approvals = relationship("PendingApproval", back_populates="lead", cascade="all, delete-orphan")
 
 
 class Conversation(Base):
@@ -104,3 +105,25 @@ class Dealership(Base):
     user_profiles = relationship("UserProfile", back_populates="dealership")
     inventory = relationship("Inventory", back_populates="dealership")
     leads = relationship("Lead", back_populates="dealership")
+    pending_approvals = relationship("PendingApproval", back_populates="dealership")
+
+
+class PendingApproval(Base):
+    """Pending approval model for RAG response verification workflow"""
+    __tablename__ = "pending_approvals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=False)  # References auth.users(id)
+    customer_message = Column(Text, nullable=False)
+    generated_response = Column(Text, nullable=False)
+    customer_phone = Column(Text, nullable=False)
+    status = Column(Text, nullable=False, default="pending")  # 'pending', 'approved', 'rejected', 'expired'
+    dealership_id = Column(UUID(as_uuid=True), ForeignKey("dealerships.id"), nullable=False)
+    expires_at = Column(DateTime(timezone=True), server_default=func.now() + func.make_interval(hours=1))
+
+    # Relationships
+    lead = relationship("Lead", back_populates="pending_approvals")
+    dealership = relationship("Dealership", back_populates="pending_approvals")

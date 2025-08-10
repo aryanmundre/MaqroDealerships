@@ -1,11 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from .db.models import Lead, Conversation, Inventory, UserProfile, Dealership
+from sqlalchemy import select, func, update
+from .db.models import Lead, Conversation, Inventory, UserProfile, Dealership, PendingApproval
 from .schemas.conversation import MessageCreate
 from .schemas.lead import LeadCreate
 from .utils.phone_utils import normalize_phone_number
 import uuid
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 import pytz
 import logging
@@ -584,4 +584,217 @@ async def get_salesperson_by_phone(*, session: AsyncSession, phone: str, dealers
         return result.scalar_one_or_none()
     except (ValueError, TypeError):
         return None
+
+
+# =============================================================================
+# PENDING APPROVAL CRUD OPERATIONS
+# =============================================================================
+
+async def create_pending_approval(
+    *,
+    session: AsyncSession,
+    lead_id: str,
+    user_id: str,
+    customer_message: str,
+    generated_response: str,
+    customer_phone: str,
+    dealership_id: str
+) -> PendingApproval:
+    """Create a new pending approval for RAG response verification"""
+    try:
+        # Expire existing approvals and create new one in single transaction
+        user_uuid = uuid.UUID(user_id)
+        
+        # Mark existing pending approvals as expired
+        await session.execute(
+            update(PendingApproval)
+            .where(
+                PendingApproval.user_id == user_uuid,
+                PendingApproval.status == "pending"
+            )
+            .values(status="expired", updated_at=datetime.now(pytz.UTC))
+        )
+        
+        # Create new approval
+        db_obj = PendingApproval(
+            lead_id=uuid.UUID(lead_id),
+            user_id=user_uuid,
+            customer_message=customer_message,
+            generated_response=generated_response,
+            customer_phone=customer_phone,
+            dealership_id=uuid.UUID(dealership_id),
+            status="pending"
+        )
+        
+        session.add(db_obj)
+        await session.commit()
+        await session.refresh(db_obj)
+        logger.info(f"Created pending approval {db_obj.id} for user {user_id}")
+        return db_obj
+        
+    except (ValueError, TypeError) as e:
+        await session.rollback()
+        raise ValueError(f"Invalid UUID format: {str(e)}")
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Error creating pending approval: {e}")
+        raise
+
+
+async def get_pending_approval_by_user(
+    *, session: AsyncSession, user_id: str, dealership_id: str = None
+) -> Optional[PendingApproval]:
+    """Get the current pending approval for a user"""
+    try:
+        user_uuid = uuid.UUID(user_id)
+        
+        query = select(PendingApproval).where(
+            PendingApproval.user_id == user_uuid,
+            PendingApproval.status == "pending",
+            PendingApproval.expires_at > datetime.now(pytz.UTC)
+        )
+        
+        # Add dealership filter if provided
+        if dealership_id:
+            dealership_uuid = uuid.UUID(dealership_id)
+            query = query.where(PendingApproval.dealership_id == dealership_uuid)
+        
+        result = await session.execute(query)
+        return result.scalar_one_or_none()
+    except (ValueError, TypeError):
+        return None
+
+
+async def update_approval_status(
+    *, 
+    session: AsyncSession, 
+    approval_id: str, 
+    status: str
+) -> Optional[PendingApproval]:
+    """Update the status of a pending approval"""
+    try:
+        approval_uuid = uuid.UUID(approval_id)
+        approval = await session.get(PendingApproval, approval_uuid)
+        
+        if not approval:
+            return None
+        
+        approval.status = status
+        approval.updated_at = datetime.now(pytz.UTC)
+        
+        await session.commit()
+        await session.refresh(approval)
+        logger.info(f"Updated approval {approval_id} status to {status}")
+        return approval
+    except (ValueError, TypeError):
+        return None
+
+
+async def expire_pending_approvals_for_user(
+    *, session: AsyncSession, user_id: str
+) -> int:
+    """Expire all pending approvals for a user (ensures only one pending at a time)"""
+    try:
+        user_uuid = uuid.UUID(user_id)
+        
+        # Find all pending approvals for this user
+        result = await session.execute(
+            select(PendingApproval).where(
+                PendingApproval.user_id == user_uuid,
+                PendingApproval.status == "pending"
+            )
+        )
+        approvals = result.scalars().all()
+        
+        # Mark them as expired
+        count = 0
+        for approval in approvals:
+            approval.status = "expired"
+            approval.updated_at = datetime.now(pytz.UTC)
+            count += 1
+        
+        if count > 0:
+            await session.commit()
+            logger.info(f"Expired {count} pending approvals for user {user_id}")
+        
+        return count
+    except (ValueError, TypeError):
+        return 0
+
+
+async def cleanup_expired_approvals(*, session: AsyncSession) -> int:
+    """Clean up expired approvals (can be run periodically)"""
+    try:
+        # Find all approvals that are past their expiration time but still pending
+        result = await session.execute(
+            select(PendingApproval).where(
+                PendingApproval.status == "pending",
+                PendingApproval.expires_at <= datetime.now(pytz.UTC)
+            )
+        )
+        approvals = result.scalars().all()
+        
+        # Mark them as expired
+        count = 0
+        for approval in approvals:
+            approval.status = "expired"
+            approval.updated_at = datetime.now(pytz.UTC)
+            count += 1
+        
+        if count > 0:
+            await session.commit()
+            logger.info(f"Cleaned up {count} expired approvals")
+        
+        return count
+    except Exception as e:
+        logger.error(f"Error cleaning up expired approvals: {e}")
+        return 0
+
+
+def is_approval_command(message: str) -> bool:
+    """Check if a message is an approval/rejection command"""
+    if not message:
+        return False
     
+    message_lower = message.lower().strip()
+    
+    # Approval commands
+    approval_commands = [
+        "yes", "y", "send", "approve", "ok", "okay", "👍", "✅", 
+        "send it", "looks good", "good", "go ahead", "approve it"
+    ]
+    
+    # Rejection commands
+    rejection_commands = [
+        "no", "n", "reject", "cancel", "skip", "👎", "❌", "don't send",
+        "do not send", "reject it", "cancel it", "skip it", "no thanks"
+    ]
+    
+    all_commands = approval_commands + rejection_commands
+    
+    return message_lower in all_commands
+
+
+def parse_approval_command(message: str) -> str:
+    """Parse approval command and return 'approved' or 'rejected'"""
+    if not message:
+        return "unknown"
+    
+    message_lower = message.lower().strip()
+    
+    approval_commands = [
+        "yes", "y", "send", "approve", "ok", "okay", "👍", "✅", 
+        "send it", "looks good", "good", "go ahead", "approve it"
+    ]
+    
+    rejection_commands = [
+        "no", "n", "reject", "cancel", "skip", "👎", "❌", "don't send",
+        "do not send", "reject it", "cancel it", "skip it", "no thanks"
+    ]
+    
+    if message_lower in approval_commands:
+        return "approved"
+    elif message_lower in rejection_commands:
+        return "rejected"
+    else:
+        return "unknown"
