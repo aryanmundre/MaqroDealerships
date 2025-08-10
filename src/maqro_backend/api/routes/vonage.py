@@ -240,7 +240,7 @@ async def vonage_webhook(
         return {"status": "error", "message": f"Internal processing error: {str(e)}"}
 
 
-@router.post("/delivery")
+@router.api_route("/delivery", methods=["GET", "POST"])
 async def vonage_delivery_webhook(request: Request):
     """
     Vonage delivery receipt webhook endpoint
@@ -249,16 +249,24 @@ async def vonage_delivery_webhook(request: Request):
     Vonage sends delivery receipts here when SMS messages are delivered, failed, etc.
     """
     try:
-        # Get delivery receipt data
-        form_data = await request.form()
-        
-        # Extract delivery receipt parameters
-        message_id = form_data.get("messageId")
-        status = form_data.get("status")
-        err_code = form_data.get("err-code")
-        to = form_data.get("to")
-        network_code = form_data.get("network-code")
-        price = form_data.get("price")
+        # Handle both GET (query params) and POST (form data) requests
+        if request.method == "GET":
+            # Vonage sends data as query parameters
+            message_id = request.query_params.get("messageId")
+            status = request.query_params.get("status")
+            err_code = request.query_params.get("err-code")
+            to = request.query_params.get("to")
+            network_code = request.query_params.get("network-code")
+            price = request.query_params.get("price")
+        else:
+            # POST - Vonage sends form data
+            form_data = await request.form()
+            message_id = form_data.get("messageId")
+            status = form_data.get("status")
+            err_code = form_data.get("err-code")
+            to = form_data.get("to")
+            network_code = form_data.get("network-code")
+            price = form_data.get("price")
         
         logger.info(f"Delivery receipt: messageId={message_id}, status={status}, to={to}, err_code={err_code}")
         
