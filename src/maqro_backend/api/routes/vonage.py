@@ -167,27 +167,77 @@ async def vonage_webhook(
             assigned_user = await get_user_profile_by_user_id(session=db, user_id=str(existing_lead.user_id))
             
             if assigned_user and assigned_user.phone:
-                # Forward the message to the assigned salesperson
-                forwarded_message = f"New message from lead {existing_lead.name} ({normalized_phone}): {message_text}"
-                
-                sms_result = await sms_service.send_sms(assigned_user.phone, forwarded_message)
-                
-                if sms_result["success"]:
-                    logger.info(f"Forwarded message from lead {existing_lead.id} to user {existing_lead.user_id}")
+                # Generate RAG response for the lead's message
+                try:
+                    # Get conversation history for AI response
+                    all_conversations_raw = await get_all_conversation_history(session=db, lead_id=str(existing_lead.id))
+                    
+                    # Convert SQLAlchemy objects to dictionaries for RAG service
+                    all_conversations = [
+                        {
+                            "id": str(conv.id),
+                            "message": conv.message,
+                            "sender": conv.sender,
+                            "created_at": conv.created_at.isoformat() if conv.created_at else None
+                        }
+                        for conv in all_conversations_raw
+                    ]
+                    
+                    # Use enhanced RAG system to find relevant vehicles
+                    vehicles = enhanced_rag_service.search_vehicles_with_context(
+                        message_text, 
+                        all_conversations, 
+                        top_k=3
+                    )
+                    
+                    # Generate enhanced AI response
+                    enhanced_response = enhanced_rag_service.generate_enhanced_response(
+                        message_text,
+                        vehicles,
+                        all_conversations,
+                        existing_lead.name
+                    )
+                    
+                    ai_response_text = enhanced_response['response_text']
+                    
+                    # Send RAG response to assigned salesperson for verification
+                    verification_message = f"RAG Response for {existing_lead.name} ({normalized_phone}):\n\nCustomer: {message_text}\n\nSuggested Reply: {ai_response_text}"
+                    
+                    sms_result = await sms_service.send_sms(assigned_user.phone, verification_message)
+                    
+                    if sms_result["success"]:
+                        logger.info(f"Sent RAG response to user {existing_lead.user_id} for verification")
+                        return {
+                            "status": "success",
+                            "message": "RAG response sent to assigned user for verification",
+                            "lead_id": str(existing_lead.id),
+                            "sent_to": assigned_user.phone,
+                            "response_sent": True,
+                            "rag_response": ai_response_text
+                        }
+                    else:
+                        logger.error(f"Failed to send RAG response to user: {sms_result['error']}")
+                        return {
+                            "status": "error",
+                            "message": "Failed to send RAG response to assigned user",
+                            "lead_id": str(existing_lead.id),
+                            "error": sms_result["error"]
+                        }
+                        
+                except Exception as rag_error:
+                    logger.error(f"Error generating RAG response: {rag_error}")
+                    # Fallback to simple message forwarding if RAG fails
+                    fallback_message = f"RAG system error. Raw message from lead {existing_lead.name} ({normalized_phone}): {message_text}"
+                    
+                    sms_result = await sms_service.send_sms(assigned_user.phone, fallback_message)
+                    
                     return {
-                        "status": "success",
-                        "message": "Lead message forwarded to assigned user",
+                        "status": "fallback",
+                        "message": "RAG error, sent raw message to assigned user",
                         "lead_id": str(existing_lead.id),
-                        "forwarded_to": assigned_user.phone,
-                        "response_sent": True
-                    }
-                else:
-                    logger.error(f"Failed to forward message to user: {sms_result['error']}")
-                    return {
-                        "status": "error",
-                        "message": "Failed to forward message to assigned user",
-                        "lead_id": str(existing_lead.id),
-                        "error": sms_result["error"]
+                        "sent_to": assigned_user.phone,
+                        "response_sent": sms_result["success"],
+                        "rag_error": str(rag_error)
                     }
             else:
                 logger.warning(f"Assigned user {existing_lead.user_id} not found or has no phone number")
