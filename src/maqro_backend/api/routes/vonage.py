@@ -16,7 +16,8 @@ from ...crud import (
     get_lead_by_phone, 
     create_lead, 
     create_conversation,
-    get_all_conversation_history
+    get_all_conversation_history,
+    get_user_profile_by_user_id
 )
 from ...schemas.lead import LeadCreate
 from ...services.ai_services import get_last_customer_message
@@ -142,16 +143,63 @@ async def vonage_webhook(
                     "error": sms_result["error"]
                 }
         
-        # If not a salesperson message, process as customer inquiry
-        # Look up existing lead by phone number
+        # If not a salesperson message, check if this is a message from an existing lead
         existing_lead = await get_lead_by_phone(
             session=db, 
             phone=normalized_phone, 
             dealership_id=default_dealership_id
         )
         
+        # If this is a message from an existing lead WITH an assigned user, forward it to the user
+        if existing_lead and existing_lead.user_id:
+            logger.info(f"Found existing lead {existing_lead.id} assigned to user {existing_lead.user_id}")
+            
+            # Add customer message to conversation history
+            await create_conversation(
+                session=db,
+                lead_id=str(existing_lead.id),
+                message=message_text,
+                sender="customer"
+            )
+            logger.info("Added customer message to conversation")
+            
+            # Get the assigned user's phone number to forward the message
+            assigned_user = await get_user_profile_by_user_id(session=db, user_id=str(existing_lead.user_id))
+            
+            if assigned_user and assigned_user.phone:
+                # Forward the message to the assigned salesperson
+                forwarded_message = f"New message from lead {existing_lead.name} ({normalized_phone}): {message_text}"
+                
+                sms_result = await sms_service.send_sms(assigned_user.phone, forwarded_message)
+                
+                if sms_result["success"]:
+                    logger.info(f"Forwarded message from lead {existing_lead.id} to user {existing_lead.user_id}")
+                    return {
+                        "status": "success",
+                        "message": "Lead message forwarded to assigned user",
+                        "lead_id": str(existing_lead.id),
+                        "forwarded_to": assigned_user.phone,
+                        "response_sent": True
+                    }
+                else:
+                    logger.error(f"Failed to forward message to user: {sms_result['error']}")
+                    return {
+                        "status": "error",
+                        "message": "Failed to forward message to assigned user",
+                        "lead_id": str(existing_lead.id),
+                        "error": sms_result["error"]
+                    }
+            else:
+                logger.warning(f"Assigned user {existing_lead.user_id} not found or has no phone number")
+                return {
+                    "status": "error",
+                    "message": "Assigned user not found or has no phone number",
+                    "lead_id": str(existing_lead.id)
+                }
+        
+        # If existing lead but no assigned user, or new lead, process with RAG system
         if existing_lead:
-            logger.info(f"Found existing lead: {existing_lead.name} ({existing_lead.id})")
+            logger.info(f"Found existing lead: {existing_lead.name} ({existing_lead.id}) - no assigned user, processing with RAG")
             lead = existing_lead
         else:
             # Create new lead from SMS

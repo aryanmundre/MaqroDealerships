@@ -3,6 +3,7 @@ from sqlalchemy import select, func
 from .db.models import Lead, Conversation, Inventory, UserProfile, Dealership
 from .schemas.conversation import MessageCreate
 from .schemas.lead import LeadCreate
+from .utils.phone_utils import normalize_phone_number
 import uuid
 from typing import List
 from datetime import datetime
@@ -32,10 +33,13 @@ async def create_lead(*, session: AsyncSession, lead_in: LeadCreate, user_id: st
             timestamp = datetime.now().strftime("%m%d_%H%M")
             lead_name = f"New Lead {timestamp}"
     
+    # Normalize phone number before storage
+    normalized_phone = normalize_phone_number(lead_in.phone) if lead_in.phone else None
+    
     db_obj = Lead(
         name=lead_name,
         email=lead_in.email,
-        phone=lead_in.phone,
+        phone=normalized_phone,
         car_interest=getattr(lead_in, 'car_interest', 'Unknown'),  # Default if not provided
         source=getattr(lead_in, 'source', 'Website'),  # Default if not provided
         status="new",  # All leads start as "new"
@@ -92,11 +96,14 @@ async def get_lead_by_phone(*, session: AsyncSession, phone: str, dealership_id:
     """Get a lead by phone number for a specific dealership (Supabase RLS compatible)"""
     try:
         dealership_uuid = uuid.UUID(dealership_id)
-        # Normalize phone number for comparison (remove spaces, dashes, parentheses)
-        normalized_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "").replace("+", "")
+        # Use centralized phone normalization
+        normalized_phone = normalize_phone_number(phone)
+        
+        if not normalized_phone:
+            return None
         
         statement = select(Lead).where(
-            Lead.phone.like(f"%{normalized_phone[-10:]}%"),  # Match last 10 digits
+            Lead.phone == normalized_phone,  # Exact match on normalized format
             Lead.dealership_id == dealership_uuid  # Filter by dealership for RLS compatibility
         )
         result = await session.execute(statement)
@@ -490,11 +497,14 @@ async def create_user_profile(*, session: AsyncSession, user_id: str, dealership
         user_uuid = uuid.UUID(user_id)
         dealership_uuid = uuid.UUID(dealership_id) if dealership_id else None
         
+        # Normalize phone number before storage
+        normalized_phone = normalize_phone_number(kwargs.get('phone')) if kwargs.get('phone') else None
+        
         db_obj = UserProfile(
             user_id=user_uuid,
             dealership_id=dealership_uuid,
             full_name=kwargs.get('full_name'),
-            phone=kwargs.get('phone'),
+            phone=normalized_phone,
             role=kwargs.get('role', 'salesperson'),  # Default to salesperson for MVP
             timezone=kwargs.get('timezone', 'America/New_York')
         )
@@ -546,6 +556,9 @@ async def update_user_profile(*, session: AsyncSession, user_id: str, **kwargs) 
                     value = uuid.UUID(value) if value else None
                 except (ValueError, TypeError):
                     continue
+            elif field == 'phone':
+                # Normalize phone number
+                value = normalize_phone_number(value)
             setattr(profile, field, value)
     
     await session.commit()
@@ -557,11 +570,14 @@ async def get_salesperson_by_phone(*, session: AsyncSession, phone: str, dealers
     """Get salesperson by phone number for a specific dealership"""
     try:
         dealership_uuid = uuid.UUID(dealership_id)
-        # Normalize phone number for comparison
-        normalized_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "").replace("+", "")
+        # Use centralized phone normalization
+        normalized_phone = normalize_phone_number(phone)
+        
+        if not normalized_phone:
+            return None
         
         statement = select(UserProfile).where(
-            UserProfile.phone.like(f"%{normalized_phone[-10:]}%"),  # Match last 10 digits
+            UserProfile.phone == normalized_phone,  # Exact match on normalized format
             UserProfile.dealership_id == dealership_uuid
         )
         result = await session.execute(statement)

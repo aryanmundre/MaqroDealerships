@@ -43,7 +43,7 @@ class Conversation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     lead_id = Column(UUID(as_uuid=True), ForeignKey("leads.id"), nullable=False)
     message = Column(Text, nullable=False)
-    sender = Column(Text, nullable=False)  # 'customer' or 'agent'
+    sender = Column(Text, nullable=False)  # 'customer', 'agent', or 'system'
 
     # Relationships
     lead = relationship("Lead", back_populates="conversations")

@@ -4,6 +4,7 @@ Vonage SMS Service for sending and handling SMS messages
 import httpx
 from typing import Dict, Any
 from ..core.config import settings
+from ..utils.phone_utils import normalize_phone_number
 import logging
 
 logger = logging.getLogger(__name__)
@@ -96,26 +97,16 @@ class VonageSMSService:
     
     def normalize_phone_number(self, phone: str) -> str:
         """
-        Normalize phone number format for consistent storage and comparison
+        Normalize phone number using centralized utility.
         
         Args:
             phone: Raw phone number from webhook
             
         Returns:
-            Normalized phone number
+            Normalized phone number or empty string if invalid
         """
-        # Remove all non-digit characters
-        digits_only = ''.join(filter(str.isdigit, phone))
-        
-        # If number starts with 1 (US country code), keep it
-        # Otherwise, assume it's a US number and add country code
-        if len(digits_only) == 11 and digits_only.startswith('1'):
-            return f"+{digits_only}"
-        elif len(digits_only) == 10:
-            return f"+1{digits_only}"
-        else:
-            # Return as-is for international numbers
-            return f"+{digits_only}"
+        normalized = normalize_phone_number(phone)
+        return normalized if normalized else ""
 
 
 # Global instance
