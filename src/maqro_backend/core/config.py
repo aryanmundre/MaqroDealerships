@@ -9,10 +9,17 @@ class Settings(BaseSettings):
     # Supabase JWT secret for authentication
     supabase_jwt_secret: str
 
-    # Vonage SMS Configuration
+    # Vonage SMS Configuration (Legacy - keeping for transition)
     vonage_api_key: str | None = None
     vonage_api_secret: str | None = None
     vonage_phone_number: str | None = None
+
+    # WhatsApp Business API Configuration
+    whatsapp_access_token: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_webhook_verify_token: str | None = None
+    whatsapp_app_secret: str | None = None
+    whatsapp_api_version: str = "v21.0"
 
     rag_config_path: str = "config.yaml"
     rag_index_name: str = "vehicle_index"
