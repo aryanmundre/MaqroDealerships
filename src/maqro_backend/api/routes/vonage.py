@@ -11,6 +11,7 @@ import pytz
 from maqro_rag import EnhancedRAGService
 from ...api.deps import get_db_session, get_current_user_id, get_user_dealership_id, get_enhanced_rag_services
 from ...services.sms_service import sms_service
+from ...services.salesperson_sms_service import salesperson_sms_service
 from ...crud import (
     get_lead_by_phone, 
     create_lead, 
@@ -109,6 +110,39 @@ async def vonage_webhook(
         # Use specific dealership ID for testing
         default_dealership_id = "d660c7d6-99e2-4fa8-b99b-d221def53d20"
         
+        # Check if this is a salesperson message (they would have a user profile)
+        # Try to process as salesperson message first
+        salesperson_result = await salesperson_sms_service.process_salesperson_message(
+            session=db,
+            from_number=normalized_phone,
+            message_text=message_text,
+            dealership_id=default_dealership_id
+        )
+        
+        # If this was a salesperson message, send response and return
+        if salesperson_result["success"] or "Salesperson not found" not in salesperson_result.get("error", ""):
+            # Send response back to salesperson
+            sms_result = await sms_service.send_sms(normalized_phone, salesperson_result["message"])
+            
+            if sms_result["success"]:
+                logger.info(f"Sent salesperson response to {normalized_phone}")
+                return {
+                    "status": "success",
+                    "message": "Salesperson message processed",
+                    "response_sent": True,
+                    "result": salesperson_result
+                }
+            else:
+                logger.error(f"Failed to send salesperson response: {sms_result['error']}")
+                return {
+                    "status": "partial_success",
+                    "message": "Salesperson message processed but response failed to send",
+                    "response_sent": False,
+                    "result": salesperson_result,
+                    "error": sms_result["error"]
+                }
+        
+        # If not a salesperson message, process as customer inquiry
         # Look up existing lead by phone number
         existing_lead = await get_lead_by_phone(
             session=db, 

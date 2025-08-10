@@ -533,4 +533,21 @@ async def update_user_profile(*, session: AsyncSession, user_id: str, **kwargs) 
     await session.commit()
     await session.refresh(profile)
     return profile
+
+
+async def get_salesperson_by_phone(*, session: AsyncSession, phone: str, dealership_id: str) -> UserProfile | None:
+    """Get salesperson by phone number for a specific dealership"""
+    try:
+        dealership_uuid = uuid.UUID(dealership_id)
+        # Normalize phone number for comparison
+        normalized_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "").replace("+", "")
+        
+        statement = select(UserProfile).where(
+            UserProfile.phone.like(f"%{normalized_phone[-10:]}%"),  # Match last 10 digits
+            UserProfile.dealership_id == dealership_uuid
+        )
+        result = await session.execute(statement)
+        return result.scalar_one_or_none()
+    except (ValueError, TypeError):
+        return None
     
