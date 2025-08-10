@@ -348,8 +348,52 @@ def generate_contextual_ai_response(
     if not last_message:
         return _generate_welcome_response(lead_name, context_analysis)
     
-    # Generate personalized response based on context
-    return _generate_personalized_response(last_message, vehicles, lead_name, context_analysis)
+    # Use new conversational prompt builder if available
+    try:
+        from maqro_rag.prompt_builder import PromptBuilder, AgentConfig
+        
+        # Create agent config from context
+        agent_config = AgentConfig(
+            tone="friendly",
+            dealership_name="our dealership",
+            persona_blurb="friendly, persuasive car salesperson"
+        )
+        
+        prompt_builder = PromptBuilder(agent_config)
+        
+        if vehicles and len(vehicles) > 0:
+            # Use grounded prompt with retrieved vehicles
+            prompt = prompt_builder.build_grounded_prompt(
+                user_message=last_message,
+                retrieved_cars=vehicles,
+                agent_config=agent_config
+            )
+        else:
+            # Use generic prompt for fallback
+            prompt = prompt_builder.build_generic_prompt(
+                user_message=last_message,
+                agent_config=agent_config
+            )
+        
+        # For now, return a simple conversational response
+        # In production, this would call the LLM with the prompt
+        if vehicles and len(vehicles) > 0:
+            vehicle = vehicles[0]['vehicle']
+            year = vehicle.get('year', '')
+            make = vehicle.get('make', '')
+            model = vehicle.get('model', '')
+            price = vehicle.get('price', 0)
+            price_str = f"${price:,}" if price else "Price available upon request"
+            
+            greeting = f"Hi {lead_name}! " if lead_name else "Hey! "
+            return f"{greeting}I found a {year} {make} {model} for {price_str}. It's in great condition and ready for a test drive. Would you like to come by this weekend to check it out?"
+        else:
+            greeting = f"Hi {lead_name}! " if lead_name else "Hey! "
+            return f"{greeting}I'd love to help you find the perfect vehicle! What's your budget range and do you have any specific features you're looking for? This will help me show you the best options we have available."
+            
+    except ImportError:
+        # Fallback to existing logic if RAG modules not available
+        return _generate_personalized_response(last_message, vehicles, lead_name, context_analysis)
 
 
 def _generate_welcome_response(lead_name: str, context_analysis: Dict[str, Any]) -> str:

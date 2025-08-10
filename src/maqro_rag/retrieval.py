@@ -11,6 +11,7 @@ from .config import Config
 from .embedding import get_embedding_provider
 from .vector_store import get_vector_store
 from .inventory import InventoryProcessor
+from .entity_parser import VehicleQuery
 
 
 class VehicleRetriever:
@@ -139,6 +140,152 @@ class VehicleRetriever:
         
         logger.info(f"Applied filters, found {len(filtered_results)} matching vehicles")
         return filtered_results
+    
+    def search_vehicles_hybrid(
+        self,
+        query: str,
+        vehicle_query: "VehicleQuery",
+        top_k: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Hybrid search: metadata filters first, then vector similarity."""
+        if not self.is_initialized:
+            raise RuntimeError("Vector index not initialized. Call build_index() or load_index() first.")
+        
+        if top_k is None:
+            top_k = self.config.retrieval.top_k
+        
+        try:
+            # Build metadata filters from vehicle query
+            filters = {}
+            
+            if vehicle_query.make:
+                filters['make'] = vehicle_query.make.lower()
+            
+            if vehicle_query.model:
+                filters['model'] = vehicle_query.model.lower()
+            
+            if vehicle_query.year_min or vehicle_query.year_max:
+                if vehicle_query.year_min and vehicle_query.year_max:
+                    filters['year'] = (vehicle_query.year_min, vehicle_query.year_max)
+                elif vehicle_query.year_min:
+                    filters['year'] = (vehicle_query.year_min, 2030)
+                elif vehicle_query.year_max:
+                    filters['year'] = (2000, vehicle_query.year_max)
+            
+            if vehicle_query.color:
+                filters['color'] = vehicle_query.color.lower()
+            
+            if vehicle_query.budget_max:
+                filters['price'] = (0, vehicle_query.budget_max)
+            
+            if vehicle_query.body_type:
+                filters['body_type'] = vehicle_query.body_type.lower()
+            
+            # If we have strong filters, apply them first
+            if filters and vehicle_query.has_strong_signals:
+                logger.info(f"Applying metadata filters: {filters}")
+                
+                # Get all vehicles and apply filters
+                all_vehicles = []
+                if hasattr(self.vector_store, 'metadata'):
+                    for i, meta in enumerate(self.vector_store.metadata):
+                        vehicle = meta.get('vehicle', {})
+                        match = True
+                        
+                        for key, value in filters.items():
+                            if key == 'year' and isinstance(value, tuple):
+                                year = vehicle.get('year', 0)
+                                if not (value[0] <= year <= value[1]):
+                                    match = False
+                                    break
+                            elif key == 'price' and isinstance(value, tuple):
+                                price = vehicle.get('price', 0)
+                                if not (value[0] <= price <= value[1]):
+                                    match = False
+                                    break
+                            elif key in vehicle:
+                                vehicle_value = str(vehicle[key]).lower()
+                                filter_value = str(value).lower()
+                                if vehicle_value != filter_value:
+                                    match = False
+                                    break
+                            else:
+                                match = False
+                                break
+                        
+                        if match:
+                            all_vehicles.append({
+                                'vehicle': vehicle,
+                                'metadata': meta,
+                                'index': i
+                            })
+                
+                # If we have filtered results, apply vector similarity
+                if all_vehicles:
+                    logger.info(f"Found {len(all_vehicles)} vehicles matching metadata filters")
+                    
+                    # Create query embedding
+                    query_embedding = self.embedding_provider.embed_text(query)
+                    
+                    # Get embeddings for filtered vehicles
+                    filtered_embeddings = []
+                    filtered_metadata = []
+                    
+                    for vehicle_data in all_vehicles:
+                        if hasattr(self.vector_store, 'embeddings'):
+                            filtered_embeddings.append(self.vector_store.embeddings[vehicle_data['index']])
+                            filtered_metadata.append(vehicle_data['metadata'])
+                    
+                    if filtered_embeddings:
+                        # Calculate similarities
+                        similarities = []
+                        for i, embedding in enumerate(filtered_embeddings):
+                            similarity = self._calculate_similarity(query_embedding, embedding)
+                            similarities.append((similarity, filtered_metadata[i]))
+                        
+                        # Sort by similarity and return top_k
+                        similarities.sort(key=lambda x: x[0], reverse=True)
+                        results = []
+                        
+                        for score, meta in similarities[:top_k]:
+                            result = {
+                                'vehicle': meta['vehicle'],
+                                'similarity_score': float(score),
+                                'metadata': meta
+                            }
+                            results.append(result)
+                        
+                        logger.info(f"Hybrid search found {len(results)} vehicles")
+                        return results
+            
+            # Fallback to regular vector search if no strong filters or no matches
+            logger.info("Falling back to vector similarity search")
+            return self.search_vehicles(query, top_k)
+            
+        except Exception as e:
+            logger.error(f"Error in hybrid search: {e}")
+            # Fallback to regular search
+            return self.search_vehicles(query, top_k)
+    
+    def _calculate_similarity(self, embedding1, embedding2) -> float:
+        """Calculate cosine similarity between two embeddings."""
+        import numpy as np
+        
+        # Convert to numpy arrays if needed
+        if not isinstance(embedding1, np.ndarray):
+            embedding1 = np.array(embedding1)
+        if not isinstance(embedding2, np.ndarray):
+            embedding2 = np.array(embedding2)
+        
+        # Calculate cosine similarity
+        dot_product = np.dot(embedding1, embedding2)
+        norm1 = np.linalg.norm(embedding1)
+        norm2 = np.linalg.norm(embedding2)
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        
+        return dot_product / (norm1 * norm2)
     
     def get_index_stats(self) -> Dict[str, Any]:
         """Get statistics about the vector index."""

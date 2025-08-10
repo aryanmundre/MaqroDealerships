@@ -17,8 +17,14 @@ vector_store:
   #   class_name: "Vehicle"
 
 retrieval:
-  top_k: 3
+  top_k: 5  # Increased for better conversational responses
   similarity_threshold: 0.7
+
+agent:
+  tone: "friendly"  # friendly, professional, concise
+  dealership_name: "our dealership"
+  persona_blurb: "friendly, persuasive car salesperson"
+  signature: null  # Optional signature for responses
 
 logging:
   level: "INFO"
