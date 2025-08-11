@@ -283,15 +283,21 @@ class EntityParser:
         model = None
         trim = None
         
-        # Check for make synonyms first
-        for synonym, canonical in self.make_synonyms.items():
-            if synonym in text:
+        # Check for make synonyms first with word boundaries
+        # Sort by length (longest first) to prioritize longer matches like "land rover" over "land"
+        sorted_makes = sorted(self.make_synonyms.items(), key=lambda x: len(x[0]), reverse=True)
+        for synonym, canonical in sorted_makes:
+            # Use word boundaries to avoid partial matches
+            if re.search(r'\b' + re.escape(synonym) + r'\b', text):
                 make = canonical
                 break
         
         # Look for model patterns and infer make if not already found
-        for model_name, model_make in model_to_make.items():
-            if model_name in text:
+        # Sort by length (longest first) to avoid partial matches
+        sorted_models = sorted(model_to_make.items(), key=lambda x: len(x[0]), reverse=True)
+        for model_name, model_make in sorted_models:
+            # Use word boundaries to avoid partial matches like "rs" in "Porsche"
+            if re.search(r'\b' + re.escape(model_name) + r'\b', text):
                 model = model_name
                 if not make:  # Only set make if not already found
                     make = model_make

@@ -92,8 +92,8 @@ export default function InventoryUploadPage() {
       
       if (result.successCount > 0) {
         toast({
-          title: "Upload successful",
-          description: `${result.successCount} vehicles uploaded successfully.`,
+          title: "Upload successful", 
+          description: `${result.successCount} vehicles uploaded and ${result.embeddingsGenerated || 0} embeddings generated for AI search.`,
         });
       }
       
@@ -186,7 +186,44 @@ export default function InventoryUploadPage() {
         </CardContent>
       </Card>
 
-      {/* Preview Section */}
+      {/* Upload Actions - Always show when file is selected */}
+      {file && (
+        <Card className="bg-gray-900/50 border-gray-800">
+          <CardHeader>
+            <CardTitle className="text-gray-100">Ready to Upload</CardTitle>
+            <CardDescription className="text-gray-400">
+              File selected: {file.name} 
+              {previewData.length > 0 && ` (${previewData.length} vehicles detected)`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleUpload} 
+                disabled={isUploading}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+              >
+                {isUploading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Upload Inventory
+                  </>
+                )}
+              </Button>
+              <Button variant="outline" onClick={resetUpload} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+                Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Preview Section - Optional */}
       {previewData.length > 0 && (
         <Card className="bg-gray-900/50 border-gray-800">
           <CardHeader>
@@ -217,7 +254,9 @@ export default function InventoryUploadPage() {
                       <TableCell className="font-medium text-gray-100">{row.make}</TableCell>
                       <TableCell className="text-gray-300">{row.model}</TableCell>
                       <TableCell className="text-gray-300">{row.year}</TableCell>
-                      <TableCell className="text-gray-300">${row.price.toLocaleString()}</TableCell>
+                      <TableCell className="text-gray-300">
+                        {typeof row.price === 'string' ? row.price : `$${row.price.toLocaleString()}`}
+                      </TableCell>
                       <TableCell className="text-gray-300">{row.mileage ? row.mileage.toLocaleString() : '-'}</TableCell>
                       <TableCell className="max-w-xs truncate text-gray-300">
                         {row.description || '-'}
@@ -232,29 +271,6 @@ export default function InventoryUploadPage() {
                 </p>
               )}
             </ScrollArea>
-            
-            <div className="flex gap-2 mt-4">
-              <Button 
-                onClick={handleUpload} 
-                disabled={isUploading}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
-              >
-                {isUploading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4" />
-                    Upload Inventory
-                  </>
-                )}
-              </Button>
-              <Button variant="outline" onClick={resetUpload} className="border-gray-700 text-gray-300 hover:bg-gray-800">
-                Reset
-              </Button>
-            </div>
           </CardContent>
         </Card>
       )}
@@ -274,16 +290,32 @@ export default function InventoryUploadPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex gap-4">
+              <div className="flex gap-4 flex-wrap">
                 <Badge variant="default" className="bg-green-500">
                   {uploadResult.successCount} vehicles uploaded
                 </Badge>
+                {uploadResult.embeddingsGenerated !== undefined && (
+                  <Badge variant="secondary" className="bg-blue-500">
+                    {uploadResult.embeddingsGenerated} AI embeddings generated
+                  </Badge>
+                )}
                 {uploadResult.errorCount > 0 && (
                   <Badge variant="destructive">
                     {uploadResult.errorCount} rows failed
                   </Badge>
                 )}
               </div>
+
+              {uploadResult.embeddingsError && (
+                <Alert className="border-yellow-500/30 bg-yellow-500/10">
+                  <AlertCircle className="h-4 w-4 text-yellow-400" />
+                  <AlertDescription className="text-gray-300">
+                    <p className="font-medium text-gray-100">Embedding Warning:</p>
+                    <p className="text-sm">{uploadResult.embeddingsError}</p>
+                    <p className="text-sm mt-1">Your inventory was uploaded successfully, but AI search may not include these items immediately.</p>
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {uploadResult.errors.length > 0 && (
                 <Alert className="border-red-500/30 bg-red-500/10">

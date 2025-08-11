@@ -70,8 +70,10 @@ class FAISSVectorStore(VectorStore):
         if self.index is None:
             raise ValueError("FAISS index not initialized")
         
-        # Ensure query vector is in the correct format for FAISS
+        # Ensure query vector is in the correct format for FAISS (2D array)
         query_vector = np.array(query_vector, dtype=np.float32)
+        if query_vector.ndim == 1:
+            query_vector = query_vector.reshape(1, -1)
         
         # Normalize query vector
         faiss.normalize_L2(query_vector)

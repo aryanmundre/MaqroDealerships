@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
-from maqro_backend.api.deps import get_db_session, get_current_user_id
+from maqro_backend.api.deps import get_db_session, get_current_user_id, get_user_dealership_id
 from maqro_backend.schemas.conversation import MessageCreate, ConversationResponse
 from maqro_backend.schemas.lead import LeadResponse
 from maqro_backend.crud import (
@@ -11,7 +11,7 @@ from maqro_backend.crud import (
 )
 from maqro_backend.services.ai_services import get_all_conversation_history
 from maqro_rag.entity_parser import EntityParser
-from maqro_rag.retrieval import VehicleRetriever
+from maqro_rag.db_retriever import DatabaseRAGRetriever
 from maqro_rag.prompt_builder import PromptBuilder, AgentConfig
 from maqro_rag.config import Config
 import logging
@@ -22,19 +22,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Initialize RAG components
+# Initialize Database RAG components
 rag_config = Config.from_yaml("config.yaml")
-vehicle_retriever = VehicleRetriever(rag_config)
+vehicle_retriever = DatabaseRAGRetriever(rag_config)
 entity_parser = EntityParser()
 
-# Load vector index if available
-index_path = "vehicle_index.faiss"
-if os.path.exists(index_path):
-    try:
-        vehicle_retriever.load_index(index_path)
-        logger.info("Loaded RAG vector index successfully")
-    except Exception as e:
-        logger.warning(f"Failed to load RAG index: {e}")
+logger.info("Initialized Database RAG system for conversation API")
 
 # Default agent config
 default_agent_config = AgentConfig(
@@ -176,7 +169,8 @@ async def generate_rag_response(
     lead_id: str,
     message_data: MessageCreate,
     db: AsyncSession = Depends(get_db_session),
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id),
+    dealership_id: str = Depends(get_user_dealership_id)
 ):
     """
     Generate conversational RAG response for a customer message.
@@ -206,24 +200,29 @@ async def generate_rag_response(
     
     logger.info(f"Extracted vehicle query: {vehicle_query}")
     
-    # 4. Perform hybrid retrieval
+    # 4. Perform database RAG hybrid retrieval
+    logger.info(f"Using dealership ID: {dealership_id} for RAG search")
     try:
         if vehicle_query.has_strong_signals:
-            retrieved_cars = vehicle_retriever.search_vehicles_hybrid(
+            retrieved_cars = await vehicle_retriever.search_vehicles_hybrid(
+                session=db,
                 query=customer_message,
                 vehicle_query=vehicle_query,
+                dealership_id=dealership_id,
                 top_k=5
             )
         else:
-            retrieved_cars = vehicle_retriever.search_vehicles(
+            retrieved_cars = await vehicle_retriever.search_vehicles(
+                session=db,
                 query=customer_message,
+                dealership_id=dealership_id,
                 top_k=5
             )
         
-        logger.info(f"Retrieved {len(retrieved_cars)} vehicles")
+        logger.info(f"Database RAG retrieved {len(retrieved_cars)} vehicles")
         
     except Exception as e:
-        logger.error(f"Error in vehicle retrieval: {e}")
+        logger.error(f"Error in database vehicle retrieval: {e}")
         retrieved_cars = []
     
     # 5. Build prompt and generate response

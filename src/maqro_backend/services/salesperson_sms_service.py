@@ -10,7 +10,8 @@ from ..crud import (
     create_inventory_item, 
     get_salesperson_by_phone,
     get_lead_by_phone,
-    create_conversation
+    create_conversation,
+    ensure_embeddings_for_dealership
 )
 from ..schemas.lead import LeadCreate
 from ..schemas.inventory import InventoryCreate
@@ -260,6 +261,17 @@ class SalespersonSMSService:
             )
             
             logger.info(f"Created new inventory item via SMS: {inventory_item.id} by {salesperson.full_name}")
+            
+            # Auto-generate embedding for this new inventory item
+            try:
+                logger.info(f"🧠 Generating embedding for SMS inventory item: {inventory_item.make} {inventory_item.model}")
+                embedding_result = await ensure_embeddings_for_dealership(
+                    session=session,
+                    dealership_id=dealership_id
+                )
+                logger.info(f"✅ Generated {embedding_result.get('built_count', 0)} embeddings via SMS")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to generate embedding for SMS inventory (creation still successful): {e}")
             
             return {
                 "success": True,
