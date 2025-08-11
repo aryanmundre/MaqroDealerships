@@ -798,3 +798,117 @@ def parse_approval_command(message: str) -> str:
         return "rejected"
     else:
         return "unknown"
+
+
+# =============================================================================
+# VEHICLE EMBEDDINGS CRUD OPERATIONS (for RAG system)
+# =============================================================================
+
+async def ensure_embeddings_for_dealership(
+    *, 
+    session: AsyncSession, 
+    dealership_id: str
+) -> dict:
+    """Ensure all inventory items have embeddings for RAG search."""
+    try:
+        from maqro_rag.db_retriever import DatabaseRAGRetriever
+        from maqro_rag.config import Config
+        
+        # Initialize RAG retriever
+        config = Config.from_yaml("config.yaml")  # Adjust path as needed
+        retriever = DatabaseRAGRetriever(config)
+        
+        # Build missing embeddings
+        built_count = await retriever.build_embeddings_for_dealership(
+            session=session,
+            dealership_id=dealership_id,
+            force_rebuild=False
+        )
+        
+        # Get stats
+        stats = await retriever.get_retriever_stats(session, dealership_id)
+        
+        logger.info(f"Built {built_count} new embeddings for dealership {dealership_id}")
+        
+        return {
+            "built_count": built_count,
+            "total_embeddings": stats.get("total_embeddings", 0),
+            "missing_embeddings": stats.get("missing_embeddings", 0),
+            "is_ready": stats.get("is_ready", False)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error ensuring embeddings for dealership {dealership_id}: {e}")
+        return {
+            "built_count": 0,
+            "total_embeddings": 0,
+            "missing_embeddings": 0,
+            "is_ready": False,
+            "error": str(e)
+        }
+
+
+async def refresh_embeddings_for_dealership(
+    *,
+    session: AsyncSession,
+    dealership_id: str
+) -> dict:
+    """Force refresh all embeddings for a dealership."""
+    try:
+        from maqro_rag.db_retriever import DatabaseRAGRetriever
+        from maqro_rag.config import Config
+        
+        # Initialize RAG retriever  
+        config = Config.from_yaml("config.yaml")
+        retriever = DatabaseRAGRetriever(config)
+        
+        # Force rebuild all embeddings
+        built_count = await retriever.build_embeddings_for_dealership(
+            session=session,
+            dealership_id=dealership_id,
+            force_rebuild=True
+        )
+        
+        # Get updated stats
+        stats = await retriever.get_retriever_stats(session, dealership_id)
+        
+        logger.info(f"Refreshed {built_count} embeddings for dealership {dealership_id}")
+        
+        return {
+            "rebuilt_count": built_count,
+            "total_embeddings": stats.get("total_embeddings", 0),
+            "is_ready": stats.get("is_ready", False)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error refreshing embeddings for dealership {dealership_id}: {e}")
+        return {
+            "rebuilt_count": 0,
+            "total_embeddings": 0,
+            "is_ready": False,
+            "error": str(e)
+        }
+
+
+async def get_rag_stats(
+    *,
+    session: AsyncSession,
+    dealership_id: str
+) -> dict:
+    """Get RAG system statistics for a dealership."""
+    try:
+        from maqro_rag.db_retriever import DatabaseRAGRetriever
+        from maqro_rag.config import Config
+        
+        # Initialize RAG retriever
+        config = Config.from_yaml("config.yaml")
+        retriever = DatabaseRAGRetriever(config)
+        
+        # Get stats
+        stats = await retriever.get_retriever_stats(session, dealership_id)
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Error getting RAG stats for dealership {dealership_id}: {e}")
+        return {"error": str(e)}

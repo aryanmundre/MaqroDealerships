@@ -91,8 +91,31 @@ class VehicleRetriever:
             # Format results
             results = []
             for i, (score, meta) in enumerate(zip(scores, metadata)):
+                # Handle different metadata structures defensively
+                if 'vehicle' in meta:
+                    vehicle_data = meta['vehicle']
+                else:
+                    # Fallback: use meta directly if 'vehicle' key missing
+                    vehicle_data = {
+                        'year': meta.get('year', ''),
+                        'make': meta.get('make', ''),
+                        'model': meta.get('model', ''),
+                        'price': meta.get('price', 0),
+                        'features': meta.get('features', ''),
+                        'description': meta.get('description', ''),
+                        'mileage': meta.get('mileage', 0),
+                        'color': meta.get('color', ''),
+                        'condition': meta.get('condition', ''),
+                        'fuel_type': meta.get('fuel_type', ''),
+                        'transmission': meta.get('transmission', ''),
+                        'doors': meta.get('doors', 0),
+                        'seats': meta.get('seats', 0),
+                        'engine': meta.get('engine', ''),
+                        'drivetrain': meta.get('drivetrain', '')
+                    }
+                
                 result = {
-                    'vehicle': meta['vehicle'],
+                    'vehicle': vehicle_data,
                     'similarity_score': float(score),
                     'metadata': meta
                 }

@@ -102,7 +102,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                 input=[text]
             )
             embedding = response.data[0].embedding
-            return np.array([embedding], dtype=np.float32)
+            return np.array(embedding, dtype=np.float32)
             
         except Exception as e:
             logger.error(f"Error embedding text: {e}")

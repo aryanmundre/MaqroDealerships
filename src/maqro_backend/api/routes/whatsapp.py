@@ -9,7 +9,10 @@ from datetime import datetime
 import pytz
 
 from maqro_rag import EnhancedRAGService
+from maqro_rag.entity_parser import EntityParser, VehicleQuery
+from maqro_rag.db_retriever import DatabaseRAGRetriever
 from ...api.deps import get_db_session, get_current_user_id, get_user_dealership_id, get_enhanced_rag_services
+from ...core.lifespan import get_db_retriever
 from ...services.whatsapp_service import whatsapp_service
 from ...services.salesperson_sms_service import salesperson_sms_service
 from ...crud import (
@@ -31,6 +34,9 @@ from ...services.ai_services import get_last_customer_message
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Initialize entity parser for better query understanding
+entity_parser = EntityParser()
 
 
 @router.get("/webhook")
@@ -69,7 +75,8 @@ async def whatsapp_webhook_verify(request: Request):
 async def whatsapp_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db_session),
-    enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services)
+    enhanced_rag_service: EnhancedRAGService = Depends(get_enhanced_rag_services),
+    db_retriever: DatabaseRAGRetriever = Depends(get_db_retriever)
 ):
     """
     WhatsApp webhook endpoint for receiving inbound messages
@@ -284,12 +291,30 @@ async def whatsapp_webhook(
                         for conv in all_conversations_raw
                     ]
                     
-                    # Use enhanced RAG system to find relevant vehicles
-                    vehicles = enhanced_rag_service.search_vehicles_with_context(
-                        message_text, 
-                        all_conversations, 
-                        top_k=3
-                    )
+                    # Parse message for entity extraction
+                    vehicle_query = entity_parser.parse_message(message_text)
+                    logger.info(f"Parsed vehicle query: make={vehicle_query.make}, model={vehicle_query.model}, strong_signals={vehicle_query.has_strong_signals}")
+                    
+                    # Use database RAG retriever based on query strength
+                    if vehicle_query.has_strong_signals:
+                        # Use hybrid search with entity filters for better results
+                        vehicles = await db_retriever.search_vehicles_hybrid(
+                            session=db,
+                            query=message_text,
+                            vehicle_query=vehicle_query,
+                            dealership_id=default_dealership_id,
+                            top_k=3
+                        )
+                        logger.info(f"Used database hybrid search with entity filters")
+                    else:
+                        # Use regular database vector search
+                        vehicles = await db_retriever.search_vehicles(
+                            session=db,
+                            query=message_text,
+                            dealership_id=default_dealership_id,
+                            top_k=3
+                        )
+                        logger.info(f"Used database vector search")
                     
                     # Generate enhanced AI response
                     enhanced_response = enhanced_rag_service.generate_enhanced_response(
@@ -340,8 +365,15 @@ async def whatsapp_webhook(
                         
                 except Exception as rag_error:
                     logger.error(f"Error generating RAG response: {rag_error}")
-                    # Fallback to simple message forwarding if RAG fails
-                    fallback_message = f"RAG system error. Raw message from lead {existing_lead.name} ({normalized_phone}): {message_text}"
+                    logger.error(f"RAG error type: {type(rag_error).__name__}")
+                    import traceback
+                    logger.error(f"RAG traceback: {traceback.format_exc()}")
+                    
+                    # Generate better fallback message based on the customer's query
+                    if vehicle_query and vehicle_query.make:
+                        fallback_message = f"Message from {existing_lead.name} ({normalized_phone}) about {vehicle_query.make} vehicles: '{message_text}'\n\nNote: RAG system temporarily unavailable. Please respond manually."
+                    else:
+                        fallback_message = f"Message from {existing_lead.name} ({normalized_phone}): '{message_text}'\n\nNote: Please respond manually as auto-response is unavailable."
                     
                     whatsapp_result = await whatsapp_service.send_message(assigned_user.phone, fallback_message)
                     
@@ -435,12 +467,30 @@ async def whatsapp_webhook(
         
         # Generate AI response using RAG system
         try:
-            # Use enhanced RAG system to find relevant vehicles
-            vehicles = enhanced_rag_service.search_vehicles_with_context(
-                message_text, 
-                all_conversations, 
-                top_k=3
-            )
+            # Parse message for entity extraction
+            vehicle_query = entity_parser.parse_message(message_text)
+            logger.info(f"Parsed vehicle query for new/unassigned lead: make={vehicle_query.make}, model={vehicle_query.model}, strong_signals={vehicle_query.has_strong_signals}")
+            
+            # Use database RAG retriever based on query strength
+            if vehicle_query.has_strong_signals:
+                # Use hybrid search with entity filters for better results
+                vehicles = await db_retriever.search_vehicles_hybrid(
+                    session=db,
+                    query=message_text,
+                    vehicle_query=vehicle_query,
+                    dealership_id=default_dealership_id,
+                    top_k=3
+                )
+                logger.info(f"Used database hybrid search with entity filters for direct customer response")
+            else:
+                # Use regular database vector search for general queries
+                vehicles = await db_retriever.search_vehicles(
+                    session=db,
+                    query=message_text,
+                    dealership_id=default_dealership_id,
+                    top_k=3
+                )
+                logger.info(f"Used database vector search for direct customer response")
             
             # Generate enhanced AI response
             enhanced_response = enhanced_rag_service.generate_enhanced_response(
@@ -484,9 +534,17 @@ async def whatsapp_webhook(
                 
         except Exception as ai_error:
             logger.error(f"Error generating AI response: {ai_error}")
+            logger.error(f"AI error type: {type(ai_error).__name__}")
+            import traceback
+            logger.error(f"AI traceback: {traceback.format_exc()}")
             
-            # Send a fallback response
-            fallback_message = f"Hi {lead.name}, thanks for your message! A team member will get back to you soon."
+            # Send a more specific fallback response based on the query
+            if vehicle_query and vehicle_query.make:
+                fallback_message = f"Hi {lead.name}! I understand you're asking about {vehicle_query.make} vehicles. Let me connect you with one of our specialists who can help you right away!"
+            elif any(word in message_text.lower() for word in ['price', 'cost', 'payment', 'financing']):
+                fallback_message = f"Hi {lead.name}! I see you're asking about pricing and financing. One of our finance specialists will get back to you shortly with detailed information!"
+            else:
+                fallback_message = f"Hi {lead.name}, thanks for your message! A team member will get back to you soon."
             
             whatsapp_result = await whatsapp_service.send_message(normalized_phone, fallback_message)
             
