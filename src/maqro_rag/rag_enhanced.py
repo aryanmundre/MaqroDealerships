@@ -316,10 +316,55 @@ class EnhancedRAGService:
         # Generate response using OpenAI (or fallback to template-based)
         try:
             response_text = self._call_openai_with_prompt(prompt)
-            return response_text
+            # Parse and clean the response to extract only the customer message
+            return self._parse_response_text(response_text)
         except Exception as e:
             logger.warning(f"Error calling OpenAI, falling back to template: {e}")
             return self._fallback_template_response(query, vehicles, context, lead_name)
+    
+    def _parse_response_text(self, raw_response: str) -> str:
+        """Parse AI response to extract customer message, removing JSON control object."""
+        import json
+        import re
+        
+        if not raw_response:
+            return raw_response
+        
+        # Look for JSON control object at the end of the response
+        # Pattern: text followed by JSON on the last line
+        lines = raw_response.strip().split('\n')
+        
+        # Check if the last line contains JSON
+        if lines:
+            last_line = lines[-1].strip()
+            
+            # Try to detect JSON pattern
+            if last_line.startswith('{') and last_line.endswith('}'):
+                try:
+                    # Validate it's actually JSON
+                    json.loads(last_line)
+                    # Remove the JSON line and return the message text
+                    message_lines = lines[:-1]
+                    customer_message = '\n'.join(message_lines).strip()
+                    logger.debug(f"Extracted customer message (removed JSON): {customer_message}")
+                    return customer_message
+                except json.JSONDecodeError:
+                    # Not valid JSON, treat as regular text
+                    pass
+            
+            # Also handle the case where JSON might be embedded in text
+            # Look for pattern: "text content {"next_action":...}"
+            json_pattern = r'\s*\{[^}]*"next_action"[^}]*\}\s*$'
+            match = re.search(json_pattern, raw_response)
+            if match:
+                # Remove the JSON part
+                customer_message = raw_response[:match.start()].strip()
+                logger.debug(f"Extracted customer message (removed embedded JSON): {customer_message}")
+                return customer_message
+        
+        # If no JSON found, return the original response
+        logger.debug("No JSON control object found, returning original response")
+        return raw_response.strip()
     
     def _get_agent_config_from_context(self, context: ConversationContext, lead_name: str) -> AgentConfig:
         """Get customized agent config based on conversation context."""
