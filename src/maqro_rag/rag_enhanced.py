@@ -10,6 +10,7 @@ from loguru import logger
 
 from .config import Config
 from .retrieval import VehicleRetriever
+from .prompt_builder import PromptBuilder, AgentConfig
 
 
 @dataclass
@@ -22,11 +23,14 @@ class ConversationContext:
     budget_range: Optional[Tuple[int, int]] = None
     vehicle_type: Optional[str] = None
     conversation_length: int = 0
+    conversation_history: Optional[List[Dict]] = None
     
     def __post_init__(self):
         """Initialize default values."""
         if self.preferences is None:
             self.preferences = {}
+        if self.conversation_history is None:
+            self.conversation_history = []
 
 
 @dataclass
@@ -110,7 +114,15 @@ class EnhancedRAGService:
         self.analyze_conversation_context = analyze_conversation_context_func
         self.response_template = ResponseTemplate()
         
-        logger.info("Initialized EnhancedRAGService")
+        # Initialize PromptBuilder with default agent config
+        default_agent_config = AgentConfig(
+            tone="friendly",
+            dealership_name="our dealership",
+            persona_blurb="friendly, persuasive car salesperson"
+        )
+        self.prompt_builder = PromptBuilder(default_agent_config)
+        
+        logger.info("Initialized EnhancedRAGService with PromptBuilder")
     
     def search_vehicles_with_context(
         self, 
@@ -245,7 +257,10 @@ class EnhancedRAGService:
             context_analysis = self.analyze_conversation_context(conversations)
             context = ConversationContext(**context_analysis)
             
-            # Generate response text
+            # Add conversation history to context for PromptBuilder
+            context.conversation_history = conversations
+            
+            # Generate response text using PromptBuilder
             response_text = self._generate_response_text(query, vehicles, context, lead_name)
             
             # Calculate response quality metrics
@@ -260,7 +275,8 @@ class EnhancedRAGService:
                 'follow_up_suggestions': follow_ups,
                 'context_analysis': context_analysis,
                 'vehicles_found': len(vehicles),
-                'query': query
+                'query': query,
+                'used_prompt_builder': True
             }
             
         except Exception as e:
@@ -274,7 +290,93 @@ class EnhancedRAGService:
         context: ConversationContext,
         lead_name: str
     ) -> str:
-        """Generate response text using templates and context."""
+        """Generate response text using PromptBuilder with conversation context."""
+        # Get conversation history from context if available
+        conversation_history = getattr(context, 'conversation_history', None)
+        
+        # Customize agent config based on context
+        agent_config = self._get_agent_config_from_context(context, lead_name)
+        
+        if vehicles:
+            # Use PromptBuilder for grounded response with conversation history
+            prompt = self.prompt_builder.build_grounded_prompt(
+                user_message=query,
+                retrieved_cars=vehicles,
+                agent_config=agent_config,
+                conversation_history=conversation_history
+            )
+        else:
+            # Use PromptBuilder for generic response with conversation history
+            prompt = self.prompt_builder.build_generic_prompt(
+                user_message=query,
+                agent_config=agent_config,
+                conversation_history=conversation_history
+            )
+        
+        # Generate response using OpenAI (or fallback to template-based)
+        try:
+            response_text = self._call_openai_with_prompt(prompt)
+            return response_text
+        except Exception as e:
+            logger.warning(f"Error calling OpenAI, falling back to template: {e}")
+            return self._fallback_template_response(query, vehicles, context, lead_name)
+    
+    def _get_agent_config_from_context(self, context: ConversationContext, lead_name: str) -> AgentConfig:
+        """Get customized agent config based on conversation context."""
+        # Adapt tone based on context
+        tone = "friendly"
+        if context.urgency == "high":
+            tone = "professional"
+        elif context.conversation_length > 5:
+            tone = "concise"
+        
+        # Customize persona based on intent
+        persona_blurb = "friendly, persuasive car salesperson"
+        if context.intent == "test_drive":
+            persona_blurb = "helpful car sales expert focused on test drive scheduling"
+        elif context.intent == "financing":
+            persona_blurb = "knowledgeable car sales expert specializing in financing options"
+        elif context.intent == "pricing":
+            persona_blurb = "transparent car sales expert focused on pricing and value"
+        
+        return AgentConfig(
+            tone=tone,
+            dealership_name="our dealership",
+            persona_blurb=persona_blurb,
+            signature=f"- Your {persona_blurb}" if lead_name else None
+        )
+    
+    def _call_openai_with_prompt(self, prompt: str) -> str:
+        """Call OpenAI API with the generated prompt."""
+        import openai
+        import os
+        
+        # Get OpenAI API key
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not found in environment variables")
+        
+        # Initialize OpenAI client
+        client = openai.OpenAI(api_key=api_key)
+        
+        # Generate response
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content.strip()
+    
+    def _fallback_template_response(
+        self,
+        query: str,
+        vehicles: List[Dict[str, Any]],
+        context: ConversationContext,
+        lead_name: str
+    ) -> str:
+        """Fallback to template-based response if OpenAI fails."""
         if not vehicles:
             return self._generate_no_match_response(query, lead_name, context)
         
@@ -290,12 +392,12 @@ class EnhancedRAGService:
             score = result['similarity_score']
             
             vehicle_text = self.response_template.format_vehicle(vehicle, template, score)
-            response_parts.append(f"{i}. **{vehicle_text}**\n")
+            response_parts.append(f"{i}. {vehicle_text}")
         
         # Add closing
         response_parts.append(template['closing'])
         
-        return "\n".join(response_parts)
+        return "\n\n".join(response_parts)
     
     def _generate_no_match_response(self, query: str, lead_name: str, context: ConversationContext) -> str:
         """Generate response when no vehicles match."""

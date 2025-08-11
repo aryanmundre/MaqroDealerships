@@ -6,7 +6,7 @@ import uuid
 from typing import List, Dict, Any, Tuple, Optional
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from sqlalchemy import text, bindparam, String, Float, Integer
 
 
 class DatabaseVectorStore:
@@ -119,9 +119,10 @@ class DatabaseVectorStore:
                 embedding_list = list(query_embedding)
             query_embedding_str = f"[{','.join(map(str, embedding_list))}]"
             
-            # Perform similarity search with inventory join
-            result = await session.execute(
-                text(f"""
+            # Perform similarity search with inventory join  
+            # Use direct string formatting for vector (safe since it's generated internally)
+            # and named parameters for user inputs
+            sql_query = f"""
                 SELECT 
                     i.id,
                     i.make,
@@ -142,12 +143,15 @@ class DatabaseVectorStore:
                   AND i.status = 'active'
                   AND (1 - (ve.embedding <=> '{query_embedding_str}'::vector)) >= :similarity_threshold
                 ORDER BY distance ASC
-                LIMIT :limit
-                """),
+                LIMIT :limit_val
+            """
+            
+            result = await session.execute(
+                text(sql_query),
                 {
-                    "dealership_id": dealership_id,
+                    "dealership_id": dealership_id, 
                     "similarity_threshold": similarity_threshold,
-                    "limit": limit
+                    "limit_val": limit
                 }
             )
             
@@ -193,7 +197,12 @@ class DatabaseVectorStore:
             
         except Exception as e:
             logger.error(f"Error in similarity search: {e}")
-            raise
+            # Rollback the transaction to clear any error state
+            try:
+                await session.rollback()
+            except:
+                pass  # Ignore rollback errors
+            return []
     
     async def delete_embeddings_for_inventory(
         self, 

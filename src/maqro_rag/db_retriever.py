@@ -135,7 +135,12 @@ class DatabaseRAGRetriever:
             
         except Exception as e:
             logger.error(f"Error searching vehicles: {e}")
-            raise
+            # Rollback the transaction to clear any error state
+            try:
+                await session.rollback()
+            except:
+                pass  # Ignore rollback errors
+            return []
     
     async def search_vehicles_hybrid(
         self,
@@ -145,32 +150,176 @@ class DatabaseRAGRetriever:
         dealership_id: str,
         top_k: int = 5
     ) -> List[Dict[str, Any]]:
-        """Hybrid search using both metadata filters and vector similarity."""
+        """Hybrid search: SQL metadata filters BEFORE vector similarity."""
         try:
             logger.info(f"Hybrid search for: '{query}' with filters")
             
-            # For now, use the standard vector search
-            # TODO: Implement metadata filtering in SQL query
-            results = await self.search_vehicles(
-                session=session,
-                query=query,
-                dealership_id=dealership_id,
-                top_k=top_k * 2,  # Get more results to filter
-                similarity_threshold=0.2  # Lower threshold for filtering
-            )
-            
-            # Apply entity-based filtering
+            # If we have strong signals, use SQL pre-filtering
             if vehicle_query.has_strong_signals:
-                filtered_results = self._apply_entity_filters(results, vehicle_query)
-                logger.info(f"Filtered to {len(filtered_results)} results using entity filters")
-                return filtered_results[:top_k]
-            
-            return results[:top_k]
+                return await self._search_with_sql_filters(
+                    session, query, vehicle_query, dealership_id, top_k
+                )
+            else:
+                # Fallback to regular vector search for weak signals
+                return await self.search_vehicles(session, query, dealership_id, top_k)
             
         except Exception as e:
             logger.error(f"Error in hybrid search: {e}")
-            # Fallback to regular search
-            return await self.search_vehicles(session, query, dealership_id, top_k)
+            # Rollback the transaction to clear any error state
+            try:
+                await session.rollback()
+            except:
+                pass  # Ignore rollback errors
+            # Return empty results instead of falling back to avoid cascading errors
+            return []
+    
+    async def _search_with_sql_filters(
+        self,
+        session: AsyncSession,
+        query: str,
+        vehicle_query: VehicleQuery,
+        dealership_id: str,
+        top_k: int
+    ) -> List[Dict[str, Any]]:
+        """Perform vector search with SQL metadata pre-filtering."""
+        from sqlalchemy import text
+        
+        # Build SQL WHERE conditions and parameters
+        where_conditions, params = self._build_sql_filters(vehicle_query, dealership_id)
+        
+        # Generate query embedding
+        query_embedding = self.embedding_provider.embed_text(query)
+        
+        # Convert embedding to pgvector format
+        if hasattr(query_embedding, 'tolist'):
+            embedding_list = query_embedding.tolist()
+        else:
+            embedding_list = list(query_embedding)
+        embedding_str = f"[{','.join(map(str, embedding_list))}]"
+        
+        # Build WHERE clause
+        where_clause = " AND ".join(where_conditions)
+        
+        # Execute SQL with metadata pre-filtering
+        logger.info(f"Executing hybrid search with filters: {list(params.keys())}")
+        
+        # Use string formatting for vector and named parameters for filters
+        sql_query = f"""
+            SELECT 
+                i.id,
+                i.make,
+                i.model,
+                i.year,
+                i.price,
+                i.mileage,
+                i.description,
+                i.features,
+                i.condition,
+                i.status,
+                ve.formatted_text,
+                ve.embedding <=> '{embedding_str}'::vector as distance,
+                (1 - (ve.embedding <=> '{embedding_str}'::vector)) as similarity_score
+            FROM inventory i
+            JOIN vehicle_embeddings ve ON i.id = ve.inventory_id
+            WHERE {where_clause}
+            ORDER BY distance ASC
+            LIMIT :top_k
+        """
+        
+        # Add top_k to params
+        all_params = {**params, "top_k": top_k}
+        
+        result = await session.execute(
+            text(sql_query),
+            all_params
+        )
+        
+        rows = result.fetchall()
+        
+        # Format results to match existing format
+        results = []
+        for row in rows:
+            vehicle_data = {
+                'id': str(row.id),
+                'make': row.make,
+                'model': row.model,
+                'year': row.year,
+                'price': self._parse_price(str(row.price)) if row.price else 0,
+                'mileage': row.mileage,
+                'description': row.description or '',
+                'features': row.features or '',
+                'condition': row.condition or '',
+                'status': row.status or 'active'
+            }
+            
+            results.append({
+                'vehicle': vehicle_data,
+                'similarity_score': float(row.similarity_score),
+                'formatted_text': row.formatted_text,
+                'distance': float(row.distance)
+            })
+        
+        logger.info(f"Hybrid search found {len(results)} vehicles with SQL pre-filtering")
+        return results
+    
+    def _build_sql_filters(self, vehicle_query: VehicleQuery, dealership_id: str) -> tuple:
+        """Build SQL WHERE conditions from VehicleQuery."""
+        conditions = ["ve.dealership_id = :dealership_id", "i.status = 'active'"]
+        params = {"dealership_id": dealership_id}
+        
+        # Make filter (with LIKE for partial matches)
+        if vehicle_query.make:
+            conditions.append("LOWER(i.make) LIKE :make")
+            params["make"] = f"%{vehicle_query.make.lower()}%"
+        
+        # Model filter (with LIKE for partial matches)
+        if vehicle_query.model:
+            conditions.append("LOWER(i.model) LIKE :model")
+            params["model"] = f"%{vehicle_query.model.lower()}%"
+        
+        # Year range filters
+        if vehicle_query.year_min and vehicle_query.year_max:
+            conditions.append("i.year BETWEEN :year_min AND :year_max")
+            params.update({"year_min": vehicle_query.year_min, "year_max": vehicle_query.year_max})
+        elif vehicle_query.year_min:
+            conditions.append("i.year >= :year_min")
+            params["year_min"] = vehicle_query.year_min
+        elif vehicle_query.year_max:
+            conditions.append("i.year <= :year_max")
+            params["year_max"] = vehicle_query.year_max
+        
+        # Budget filter
+        if vehicle_query.budget_max:
+            # Handle non-numeric prices like 'TBD', 'N/A', etc.
+            conditions.append("""
+                i.price ~ '^[0-9,.$]+$' 
+                AND i.price NOT IN ('TBD', 'N/A', '', 'Call', 'Contact')
+                AND CAST(REPLACE(REPLACE(REPLACE(i.price, '$', ''), ',', ''), '.00', '') AS INTEGER) <= :budget_max
+            """)
+            params["budget_max"] = int(vehicle_query.budget_max)
+        
+        # Color filter (search in description and features)
+        if vehicle_query.color:
+            conditions.append("(LOWER(i.description) LIKE :color OR LOWER(i.features) LIKE :color)")
+            params["color"] = f"%{vehicle_query.color.lower()}%"
+        
+        # Trim filter (search in description and features)
+        if vehicle_query.trim:
+            conditions.append("(LOWER(i.description) LIKE :trim OR LOWER(i.features) LIKE :trim)")
+            params["trim"] = f"%{vehicle_query.trim.lower()}%"
+        
+        # Body type filter (search in description and features)
+        if vehicle_query.body_type:
+            conditions.append("(LOWER(i.description) LIKE :body_type OR LOWER(i.features) LIKE :body_type)")
+            params["body_type"] = f"%{vehicle_query.body_type.lower()}%"
+        
+        # Features filter (search each feature)
+        if vehicle_query.features:
+            for i, feature in enumerate(vehicle_query.features):
+                conditions.append(f"(LOWER(i.features) LIKE :feature_{i} OR LOWER(i.description) LIKE :feature_{i})")
+                params[f"feature_{i}"] = f"%{feature.lower()}%"
+        
+        return conditions, params
     
     def _apply_entity_filters(
         self,
