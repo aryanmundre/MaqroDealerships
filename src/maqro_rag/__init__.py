@@ -7,12 +7,14 @@ vehicle inventory and providing intelligent search capabilities.
 __version__ = "0.1.0"
 
 # Core components
-from maqro_rag.config import Config
-from maqro_rag.embedding import EmbeddingProvider, get_embedding_provider, EmbeddingManager
-from maqro_rag.vector_store import VectorStore, get_vector_store
-from maqro_rag.inventory import InventoryProcessor, VehicleData
-from maqro_rag.retrieval import VehicleRetriever
-from maqro_rag.rag_enhanced import EnhancedRAGService, ConversationContext, ResponseQuality, ResponseTemplate
+from .config import Config
+from .embedding import EmbeddingProvider, get_embedding_provider, EmbeddingManager
+from .vector_store import VectorStore, get_vector_store
+from .inventory import InventoryProcessor, VehicleData
+from .retrieval import VehicleRetriever
+from .rag_enhanced import EnhancedRAGService, ConversationContext, ResponseQuality, ResponseTemplate
+from .entity_parser import EntityParser, VehicleQuery
+from .prompt_builder import PromptBuilder, AgentConfig
 
 __all__ = [
     "Config",
@@ -27,5 +29,9 @@ __all__ = [
     "EnhancedRAGService",
     "ConversationContext",
     "ResponseQuality",
-    "ResponseTemplate"
+    "ResponseTemplate",
+    "EntityParser",
+    "VehicleQuery",
+    "PromptBuilder",
+    "AgentConfig"
 ] 

@@ -8,6 +8,13 @@ from typing import List, Optional
 import numpy as np
 from loguru import logger
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 try:
     import openai
 except ImportError:
