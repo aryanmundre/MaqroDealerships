@@ -9,6 +9,7 @@ class ConversationBase(BaseModel):
 class MessageCreate(ConversationBase):
     """Data structure for adding a new message to existing lead (Supabase compatible)"""
     lead_id: str = Field(..., description="Lead UUID as string")  # Changed to string for UUID compatibility
+    sender: str = Field(..., description="Who sent the message: 'customer' or 'agent'")
 
 
 class ConversationResponse(ConversationBase):

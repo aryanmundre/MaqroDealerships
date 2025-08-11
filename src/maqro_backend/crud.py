@@ -236,12 +236,12 @@ async def create_conversation(*, session: AsyncSession, lead_id: str, message: s
 
 
 async def create_message(*, session: AsyncSession, message_in: MessageCreate) -> Conversation:
-    """Create a new message (customer conversation) with Supabase UUID compatibility"""
+    """Create a new message (customer or agent conversation) with Supabase UUID compatibility"""
     return await create_conversation(
         session=session,
         lead_id=str(message_in.lead_id),  # Convert to string for UUID handling
         message=message_in.message,
-        sender="customer"
+        sender=message_in.sender
     )
 
 
