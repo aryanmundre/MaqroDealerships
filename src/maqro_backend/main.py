@@ -19,6 +19,9 @@ app = FastAPI(
 # CORS configuration
 origins = [
     "http://localhost:3000",  # Allow frontend origin
+    "https://dealerships-two.vercel.app",  # Your Vercel frontend domain
+    "https://*.vercel.app",  # Allow all Vercel subdomains
+    "*",  # Temporarily allow all origins for testing
 ]
 
 app.add_middleware(

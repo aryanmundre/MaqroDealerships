@@ -13,6 +13,7 @@ class InventoryBase(BaseModel):
     mileage: int | None = None
     description: str | None = None
     features: str | None = None
+    condition: str | None = None
 
 
 class InventoryCreate(InventoryBase):
@@ -29,12 +30,21 @@ class InventoryUpdate(BaseModel):
     mileage: int | None = None
     description: str | None = None
     features: str | None = None
+    condition: str | None = None
     status: str | None = None
 
 
-class InventoryResponse(InventoryBase):
-    """Response model for inventory items (Supabase compatible)"""
+class InventoryResponse(BaseModel):
+    """Response model for inventory items (Frontend compatible)"""
     id: str = Field(..., description="UUID as string")
+    make: str
+    model: str
+    year: int
+    price: str  # Keep as string to handle "TBD", "Call for price" etc.
+    mileage: int | None = None
+    description: str | None = None
+    features: str | None = None
+    condition: str | None = None
     dealership_id: str = Field(..., description="Dealership UUID as string")
     status: str
     created_at: datetime

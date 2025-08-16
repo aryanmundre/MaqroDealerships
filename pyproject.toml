@@ -1,8 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "maqro-dealerships"
 version = "0.1.0"
-dependencies = ["fastapi"]
+description = "Maqro Dealership Backend API"
+authors = [{name = "Maqro Team"}]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "faiss-cpu>=1.7.4",
+    "openai>=1.0.0",
+    "cohere>=4.0.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "loguru>=0.7.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    "sqlalchemy>=2.0.0",
+    "asyncpg>=0.29.0",
+    "aiosqlite>=0.19.0",
+    "alembic>=1.12.0",
+    "httpx>=0.25.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "requests>=2.31.0",
+    "openpyxl>=3.1.0",
+    "PyJWT>=2.8.0"
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages     = ["maqro_backend", "maqro_rag"]
+packages = ["maqro_backend", "maqro_rag"]
+
+[tool.setuptools.package-data]
+maqro_backend = ["*.py"]
+maqro_rag = ["*.py"]

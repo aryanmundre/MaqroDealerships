@@ -1,14 +1,16 @@
 "use client"
 
-import { useState, useEffect, use } from "react"
+import { useState, useEffect, use, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Send, Check, X, Bot, User } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ArrowLeft, Send, Check, X, Bot, User, MessageSquare, Phone } from "lucide-react"
 import Link from "next/link"
-import { getLeadById } from "@/lib/leads-api"
+import { getMyLeadById } from "@/lib/leads-api"
 import { getConversations, addMessage } from "@/lib/conversations-api"
+import { sendSMS } from "@/lib/sms-api"
 import type { Lead, Conversation } from "@/lib/supabase"
 
 const statusColors = {
@@ -23,20 +25,33 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
   const resolvedParams = use(params)
   const [leadData, setLeadData] = useState<Lead | null>(null)
   const [customMessage, setCustomMessage] = useState("")
+  const [smsMessage, setSmsMessage] = useState("")
   const [messageList, setMessageList] = useState<Conversation[]>([])
   const [sending, setSending] = useState(false)
+  const [sendingSMS, setSendingSMS] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [smsError, setSmsError] = useState<string | null>(null)
   const [sendSuccess, setSendSuccess] = useState(false)
+  const [smsSuccess, setSmsSuccess] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     async function fetchData() {
-      const lead = await getLeadById(resolvedParams.id)
+      const lead = await getMyLeadById(resolvedParams.id)
       setLeadData(lead)
       const conversations = await getConversations(resolvedParams.id)
       setMessageList(conversations)
     }
     fetchData()
   }, [resolvedParams.id])
+
+  // Scroll to bottom on initial load and new messages  
+  useEffect(() => {
+    if (messagesContainerRef.current && messageList.length > 0) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  }, [messageList])
 
   const handleSendMessage = async () => {
     if (!customMessage.trim() || !leadData) return
@@ -55,6 +70,34 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
       setSendError("Failed to send message")
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleSendSMS = async () => {
+    if (!smsMessage.trim() || !leadData?.phone) return
+    setSendingSMS(true)
+    setSmsError(null)
+    setSmsSuccess(false)
+    
+    const messageToSend = smsMessage.trim()
+    
+    try {
+      // Send SMS via backend
+      const smsResult = await sendSMS(leadData.phone, messageToSend)
+      
+      if (smsResult.success) {
+        // Also save as a conversation message
+        const newMessage = await addMessage(leadData.id, `SMS: ${messageToSend}`)
+        setSmsSuccess(true)
+        setMessageList((prev) => [...prev, newMessage])
+        setSmsMessage("")
+      } else {
+        setSmsError(smsResult.error || "Failed to send SMS")
+      }
+    } catch (err) {
+      setSmsError("Failed to send SMS")
+    } finally {
+      setSendingSMS(false)
     }
   }
 
@@ -78,7 +121,7 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
             </Badge>
           </div>
           <div className="flex items-center gap-4 text-gray-400 text-sm">
-            <span>{leadData.car}</span>
+            <span>{leadData.car_interest}</span>
             <span>•</span>
             <span>{leadData.phone}</span>
             <span>•</span>
@@ -90,12 +133,12 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <Card className="bg-gray-900/50 border-gray-800 h-[600px] flex flex-col">
-            <CardHeader className="border-b border-gray-800">
+            <CardHeader className="border-b border-gray-800 flex-shrink-0">
               <h3 className="font-semibold text-gray-100">Conversation</h3>
             </CardHeader>
-            <CardContent className="flex-1 p-0">
+            <CardContent className="flex-1 p-0 overflow-hidden">
               <div className="h-full flex flex-col">
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
                   {messageList.map((message) => (
                     <div
                       key={message.id}
@@ -112,12 +155,12 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
                           {message.sender === "customer" ? (
                             <User className="w-4 h-4" />
                           ) : (
-                            <User className="w-4 h-4" />
+                            <Bot className="w-4 h-4" />
                           )}
                           <span className="text-sm font-medium">
                             {message.sender === "customer"
                               ? leadData.name
-                              : "You"}
+                              : "Agent"}
                           </span>
                           <span className="text-xs opacity-70">{new Date(message.created_at).toLocaleTimeString()}</span>
                         </div>
@@ -125,27 +168,81 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
                       </div>
                     </div>
                   ))}
+                  <div ref={messagesEndRef} />
                 </div>
 
-                <div className="border-t border-gray-800 p-4">
-                  <div className="flex gap-2">
-                    <Textarea
-                      placeholder="Type your message..."
-                      value={customMessage}
-                      onChange={(e) => setCustomMessage(e.target.value)}
-                      className="flex-1 bg-gray-800 border-gray-700 text-gray-100 placeholder-gray-400 resize-none"
-                      rows={2}
-                    />
-                    <Button onClick={handleSendMessage} className="bg-blue-600 hover:bg-blue-700 text-white self-end">
-                      <Send className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  {sendSuccess && (
-                    <p className="text-green-400 text-sm mt-2">Message sent successfully!</p>
-                  )}
-                  {sendError && (
-                    <p className="text-red-400 text-sm mt-2">{sendError}</p>
-                  )}
+                <div className="border-t border-gray-800 p-4 flex-shrink-0">
+                  <Tabs defaultValue="message" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 bg-gray-800 border-gray-700">
+                      <TabsTrigger value="message" className="flex items-center gap-2 data-[state=active]:bg-gray-700">
+                        <MessageSquare className="w-4 h-4" />
+                        Internal Message
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="sms" 
+                        className="flex items-center gap-2 data-[state=active]:bg-gray-700"
+                        disabled={!leadData?.phone}
+                      >
+                        <Phone className="w-4 h-4" />
+                        SMS {!leadData?.phone && "(No phone)"}
+                      </TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="message" className="mt-4">
+                      <div className="flex gap-2">
+                        <Textarea
+                          placeholder="Type your internal message..."
+                          value={customMessage}
+                          onChange={(e) => setCustomMessage(e.target.value)}
+                          className="flex-1 bg-gray-800 border-gray-700 text-gray-100 placeholder-gray-400 resize-none"
+                          rows={2}
+                          disabled={sending}
+                        />
+                        <Button 
+                          onClick={handleSendMessage} 
+                          disabled={sending || !customMessage.trim()}
+                          className="bg-blue-600 hover:bg-blue-700 text-white self-end"
+                        >
+                          {sending ? <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Send className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                      {sendSuccess && (
+                        <p className="text-green-400 text-sm mt-2">Message sent successfully!</p>
+                      )}
+                      {sendError && (
+                        <p className="text-red-400 text-sm mt-2">{sendError}</p>
+                      )}
+                    </TabsContent>
+                    
+                    <TabsContent value="sms" className="mt-4">
+                      <div className="flex gap-2">
+                        <Textarea
+                          placeholder={`Send SMS to ${leadData?.phone || 'phone number not available'}...`}
+                          value={smsMessage}
+                          onChange={(e) => setSmsMessage(e.target.value)}
+                          className="flex-1 bg-gray-800 border-gray-700 text-gray-100 placeholder-gray-400 resize-none"
+                          rows={2}
+                          disabled={sendingSMS || !leadData?.phone}
+                        />
+                        <Button 
+                          onClick={handleSendSMS} 
+                          disabled={sendingSMS || !smsMessage.trim() || !leadData?.phone}
+                          className="bg-green-600 hover:bg-green-700 text-white self-end"
+                        >
+                          {sendingSMS ? <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Phone className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                      {smsSuccess && (
+                        <p className="text-green-400 text-sm mt-2">SMS sent successfully!</p>
+                      )}
+                      {smsError && (
+                        <p className="text-red-400 text-sm mt-2">{smsError}</p>
+                      )}
+                      {leadData?.phone && (
+                        <p className="text-gray-400 text-xs mt-2">SMS will be sent to {leadData.phone}</p>
+                      )}
+                    </TabsContent>
+                  </Tabs>
                 </div>
               </div>
             </CardContent>
@@ -166,7 +263,7 @@ export default function ConversationDetail({ params }: { params: Promise<{ id: s
               </div>
               <div>
                 <label className="text-sm text-gray-400">Vehicle Interest</label>
-                <p className="text-gray-100 font-medium">{leadData.car}</p>
+                <p className="text-gray-100 font-medium">{leadData.car_interest}</p>
               </div>
               <div>
                 <label className="text-sm text-gray-400">Phone</label>

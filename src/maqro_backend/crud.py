@@ -1,10 +1,16 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from .db.models import Lead, Conversation, Inventory, UserProfile, Dealership
+from sqlalchemy import select, func, update
+from .db.models import Lead, Conversation, Inventory, UserProfile, Dealership, PendingApproval
 from .schemas.conversation import MessageCreate
 from .schemas.lead import LeadCreate
+from .utils.phone_utils import normalize_phone_number
 import uuid
-from typing import List
+from typing import List, Optional
+from datetime import datetime
+import pytz
+import logging
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # LEAD CRUD OPERATIONS
@@ -12,15 +18,34 @@ from typing import List
 
 async def create_lead(*, session: AsyncSession, lead_in: LeadCreate, user_id: str, dealership_id: str) -> Lead:
     """Create a new lead with Supabase compatibility"""
+    
+    # Auto-generate name if not provided
+    lead_name = lead_in.name
+    if not lead_name:
+        if lead_in.phone:
+            # Use phone number for name
+            lead_name = f"SMS Lead {lead_in.phone}"
+        elif lead_in.email:
+            # Use email for name
+            lead_name = f"Lead {lead_in.email.split('@')[0]}"
+        else:
+            # Fallback to generic name with timestamp
+            timestamp = datetime.now().strftime("%m%d_%H%M")
+            lead_name = f"New Lead {timestamp}"
+    
+    # Normalize phone number before storage
+    normalized_phone = normalize_phone_number(lead_in.phone) if lead_in.phone else None
+    
     db_obj = Lead(
-        name=lead_in.name,
+        name=lead_name,
         email=lead_in.email,
-        phone=lead_in.phone,
-        car=getattr(lead_in, 'car', 'Unknown'),  # Default if not provided
+        phone=normalized_phone,
+        car_interest=getattr(lead_in, 'car_interest', 'Unknown'),  # Default if not provided
         source=getattr(lead_in, 'source', 'Website'),  # Default if not provided
         status="new",  # All leads start as "new"
-        last_contact="Just now",
+        last_contact_at=datetime.now(pytz.timezone('utc')),  # Current time in UTC
         message=getattr(lead_in, 'message', ''),  # Initial message
+        max_price=getattr(lead_in, 'max_price', None),  # Maximum price range
         user_id=uuid.UUID(user_id) if user_id else None,  # Assigned salesperson (nullable)
         dealership_id=uuid.UUID(dealership_id)  # Required dealership ID
     )
@@ -67,6 +92,128 @@ async def get_lead_by_email(*, session: AsyncSession, email: str, dealership_id:
         return None
 
 
+async def get_lead_by_phone(*, session: AsyncSession, phone: str, dealership_id: str) -> Lead | None:
+    """Get a lead by phone number for a specific dealership (Supabase RLS compatible)"""
+    try:
+        dealership_uuid = uuid.UUID(dealership_id)
+        # Use centralized phone normalization
+        normalized_phone = normalize_phone_number(phone)
+        
+        if not normalized_phone:
+            return None
+        
+        statement = select(Lead).where(
+            Lead.phone == normalized_phone,  # Exact match on normalized format
+            Lead.dealership_id == dealership_uuid  # Filter by dealership for RLS compatibility
+        )
+        result = await session.execute(statement)
+        return result.scalar_one_or_none()
+    except (ValueError, TypeError):
+        return None
+
+async def get_leads_by_salesperson(
+        *, session: AsyncSession, salesperson_id: str
+) -> list[Lead]:
+    """Return all leads assigned to a specific salesperson (newest first)"""
+    try:
+        salesperson_uuid = uuid.UUID(salesperson_id)
+        result = await session.execute(
+            select(Lead)
+            .where(Lead.user_id == salesperson_uuid)
+            .order_by(Lead.created_at.desc())
+        )
+        return result.scalars().all()
+    except (ValueError, TypeError):
+        return []
+
+
+async def get_leads_with_conversations_summary_by_salesperson(
+    *, session: AsyncSession, salesperson_id: str
+) -> list[dict]:
+    """
+    Return all leads with their latest conversation for a specific salesperson.
+    Uses a simple JOIN approach optimized for direct Supabase connection.
+    """
+    try:
+        salesperson_uuid = uuid.UUID(salesperson_id)
+        
+        # Simple and efficient query with LEFT JOIN
+        result = await session.execute(
+            select(
+                Lead.id,
+                Lead.name,
+                Lead.car_interest,
+                Lead.status,
+                Lead.email,
+                Lead.phone,
+                Lead.created_at,
+                func.max(Conversation.message).label('latest_message'),
+                func.max(Conversation.created_at).label('latest_message_time'),
+                func.count(Conversation.id).label('conversation_count')
+            )
+            .outerjoin(Conversation, Conversation.lead_id == Lead.id)
+            .where(Lead.user_id == salesperson_uuid)
+            .group_by(
+                Lead.id,
+                Lead.name,
+                Lead.car_interest,
+                Lead.status,
+                Lead.email,
+                Lead.phone,
+                Lead.created_at
+            )
+            .order_by(Lead.created_at.desc())
+        )
+        
+        def format_time_ago(date_obj):
+            if not date_obj:
+                return "Never"
+            
+            from datetime import datetime
+            import pytz
+            
+            now = datetime.now(pytz.UTC)
+            if date_obj.tzinfo is None:
+                date_obj = pytz.UTC.localize(date_obj)
+            
+            diff = now - date_obj
+            diff_mins = int(diff.total_seconds() // 60)
+            diff_hours = int(diff.total_seconds() // 3600)
+            diff_days = int(diff.total_seconds() // 86400)
+            
+            if diff_mins < 1:
+                return "Just now"
+            elif diff_mins < 60:
+                return f"{diff_mins}m ago"
+            elif diff_hours < 24:
+                return f"{diff_hours}h ago"
+            else:
+                return f"{diff_days}d ago"
+        
+        # Convert results to expected format
+        leads_with_conversations = []
+        for row in result:
+            leads_with_conversations.append({
+                'id': str(row.id),
+                'name': row.name,
+                'car_interest': row.car_interest or '',
+                'status': row.status,
+                'email': row.email,
+                'phone': row.phone,
+                'lastMessage': row.latest_message or 'No messages yet',
+                'lastMessageTime': format_time_ago(row.latest_message_time),
+                'unreadCount': 0,  # TODO: implement unread counting logic
+                'created_at': row.created_at.isoformat() if row.created_at else '',
+                'conversationCount': int(row.conversation_count) if row.conversation_count else 0
+            })
+        
+        return leads_with_conversations
+        
+    except (ValueError, TypeError):
+        return []
+    
+
+
 # =============================================================================
 # CONVERSATION CRUD OPERATIONS
 # =============================================================================
@@ -89,12 +236,12 @@ async def create_conversation(*, session: AsyncSession, lead_id: str, message: s
 
 
 async def create_message(*, session: AsyncSession, message_in: MessageCreate) -> Conversation:
-    """Create a new message (customer conversation) with Supabase UUID compatibility"""
+    """Create a new message (customer or agent conversation) with Supabase UUID compatibility"""
     return await create_conversation(
         session=session,
         lead_id=str(message_in.lead_id),  # Convert to string for UUID handling
         message=message_in.message,
-        sender="customer"
+        sender=message_in.sender
     )
 
 
@@ -180,6 +327,7 @@ async def create_inventory_item(*, session: AsyncSession, inventory_data: dict, 
             mileage=inventory_data.get('mileage'),
             description=inventory_data.get('description'),
             features=inventory_data.get('features'),
+            condition=inventory_data.get('condition'),
             dealership_id=dealership_uuid,
             status=inventory_data.get('status', 'active')
         )
@@ -194,14 +342,28 @@ async def create_inventory_item(*, session: AsyncSession, inventory_data: dict, 
 async def get_inventory_by_dealership(*, session: AsyncSession, dealership_id: str) -> list[Inventory]:
     """Get all inventory items for a dealership (Supabase RLS compatible)"""
     try:
+        logger.info(f"🔍 Searching inventory for dealership: {dealership_id}")
         dealership_uuid = uuid.UUID(dealership_id)
+        logger.info(f"🔑 Converted to UUID: {dealership_uuid}")
+        
         result = await session.execute(
             select(Inventory)
             .where(Inventory.dealership_id == dealership_uuid)
             .order_by(Inventory.created_at.desc())
         )
-        return result.scalars().all()
-    except (ValueError, TypeError):
+        inventory_items = result.scalars().all()
+        logger.info(f"📋 Found {len(inventory_items)} inventory items in database for dealership {dealership_id}")
+        
+        # Log all dealership IDs in inventory for debugging
+        all_dealership_ids = await session.execute(
+            select(Inventory.dealership_id).distinct()
+        )
+        all_ids = [str(did[0]) for did in all_dealership_ids.fetchall()]
+        logger.info(f"🏢 All dealership IDs in inventory table: {all_ids}")
+        
+        return inventory_items
+    except (ValueError, TypeError) as e:
+        logger.error(f"❌ Error querying inventory: {e}")
         return []
 
 
@@ -233,6 +395,7 @@ async def bulk_create_inventory_items(
                 mileage=item.get('mileage'),
                 description=item.get('description'),
                 features=item.get('features'),
+                condition=item.get('condition'),
                 dealership_id=dealership_uuid,
                 status=item.get('status', 'active')
             ) for item in inventory_data
@@ -334,11 +497,14 @@ async def create_user_profile(*, session: AsyncSession, user_id: str, dealership
         user_uuid = uuid.UUID(user_id)
         dealership_uuid = uuid.UUID(dealership_id) if dealership_id else None
         
+        # Normalize phone number before storage
+        normalized_phone = normalize_phone_number(kwargs.get('phone')) if kwargs.get('phone') else None
+        
         db_obj = UserProfile(
             user_id=user_uuid,
             dealership_id=dealership_uuid,
             full_name=kwargs.get('full_name'),
-            phone=kwargs.get('phone'),
+            phone=normalized_phone,
             role=kwargs.get('role', 'salesperson'),  # Default to salesperson for MVP
             timezone=kwargs.get('timezone', 'America/New_York')
         )
@@ -390,9 +556,359 @@ async def update_user_profile(*, session: AsyncSession, user_id: str, **kwargs) 
                     value = uuid.UUID(value) if value else None
                 except (ValueError, TypeError):
                     continue
+            elif field == 'phone':
+                # Normalize phone number
+                value = normalize_phone_number(value)
             setattr(profile, field, value)
     
     await session.commit()
     await session.refresh(profile)
     return profile
+
+
+async def get_salesperson_by_phone(*, session: AsyncSession, phone: str, dealership_id: str) -> UserProfile | None:
+    """Get salesperson by phone number for a specific dealership"""
+    try:
+        dealership_uuid = uuid.UUID(dealership_id)
+        # Use centralized phone normalization
+        normalized_phone = normalize_phone_number(phone)
+        
+        if not normalized_phone:
+            return None
+        
+        statement = select(UserProfile).where(
+            UserProfile.phone == normalized_phone,  # Exact match on normalized format
+            UserProfile.dealership_id == dealership_uuid
+        )
+        result = await session.execute(statement)
+        return result.scalar_one_or_none()
+    except (ValueError, TypeError):
+        return None
+
+
+# =============================================================================
+# PENDING APPROVAL CRUD OPERATIONS
+# =============================================================================
+
+async def create_pending_approval(
+    *,
+    session: AsyncSession,
+    lead_id: str,
+    user_id: str,
+    customer_message: str,
+    generated_response: str,
+    customer_phone: str,
+    dealership_id: str
+) -> PendingApproval:
+    """Create a new pending approval for RAG response verification"""
+    try:
+        # Expire existing approvals and create new one in single transaction
+        user_uuid = uuid.UUID(user_id)
+        
+        # Mark existing pending approvals as expired
+        await session.execute(
+            update(PendingApproval)
+            .where(
+                PendingApproval.user_id == user_uuid,
+                PendingApproval.status == "pending"
+            )
+            .values(status="expired", updated_at=datetime.now(pytz.UTC))
+        )
+        
+        # Create new approval
+        db_obj = PendingApproval(
+            lead_id=uuid.UUID(lead_id),
+            user_id=user_uuid,
+            customer_message=customer_message,
+            generated_response=generated_response,
+            customer_phone=customer_phone,
+            dealership_id=uuid.UUID(dealership_id),
+            status="pending"
+        )
+        
+        session.add(db_obj)
+        await session.commit()
+        await session.refresh(db_obj)
+        logger.info(f"Created pending approval {db_obj.id} for user {user_id}")
+        return db_obj
+        
+    except (ValueError, TypeError) as e:
+        await session.rollback()
+        raise ValueError(f"Invalid UUID format: {str(e)}")
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Error creating pending approval: {e}")
+        raise
+
+
+async def get_pending_approval_by_user(
+    *, session: AsyncSession, user_id: str, dealership_id: str = None
+) -> Optional[PendingApproval]:
+    """Get the current pending approval for a user"""
+    try:
+        user_uuid = uuid.UUID(user_id)
+        
+        query = select(PendingApproval).where(
+            PendingApproval.user_id == user_uuid,
+            PendingApproval.status == "pending",
+            PendingApproval.expires_at > datetime.now(pytz.UTC)
+        )
+        
+        # Add dealership filter if provided
+        if dealership_id:
+            dealership_uuid = uuid.UUID(dealership_id)
+            query = query.where(PendingApproval.dealership_id == dealership_uuid)
+        
+        result = await session.execute(query)
+        return result.scalar_one_or_none()
+    except (ValueError, TypeError):
+        return None
+
+
+async def update_approval_status(
+    *, 
+    session: AsyncSession, 
+    approval_id: str, 
+    status: str
+) -> Optional[PendingApproval]:
+    """Update the status of a pending approval"""
+    try:
+        approval_uuid = uuid.UUID(approval_id)
+        approval = await session.get(PendingApproval, approval_uuid)
+        
+        if not approval:
+            return None
+        
+        approval.status = status
+        approval.updated_at = datetime.now(pytz.UTC)
+        
+        await session.commit()
+        await session.refresh(approval)
+        logger.info(f"Updated approval {approval_id} status to {status}")
+        return approval
+    except (ValueError, TypeError):
+        return None
+
+
+async def expire_pending_approvals_for_user(
+    *, session: AsyncSession, user_id: str
+) -> int:
+    """Expire all pending approvals for a user (ensures only one pending at a time)"""
+    try:
+        user_uuid = uuid.UUID(user_id)
+        
+        # Find all pending approvals for this user
+        result = await session.execute(
+            select(PendingApproval).where(
+                PendingApproval.user_id == user_uuid,
+                PendingApproval.status == "pending"
+            )
+        )
+        approvals = result.scalars().all()
+        
+        # Mark them as expired
+        count = 0
+        for approval in approvals:
+            approval.status = "expired"
+            approval.updated_at = datetime.now(pytz.UTC)
+            count += 1
+        
+        if count > 0:
+            await session.commit()
+            logger.info(f"Expired {count} pending approvals for user {user_id}")
+        
+        return count
+    except (ValueError, TypeError):
+        return 0
+
+
+async def cleanup_expired_approvals(*, session: AsyncSession) -> int:
+    """Clean up expired approvals (can be run periodically)"""
+    try:
+        # Find all approvals that are past their expiration time but still pending
+        result = await session.execute(
+            select(PendingApproval).where(
+                PendingApproval.status == "pending",
+                PendingApproval.expires_at <= datetime.now(pytz.UTC)
+            )
+        )
+        approvals = result.scalars().all()
+        
+        # Mark them as expired
+        count = 0
+        for approval in approvals:
+            approval.status = "expired"
+            approval.updated_at = datetime.now(pytz.UTC)
+            count += 1
+        
+        if count > 0:
+            await session.commit()
+            logger.info(f"Cleaned up {count} expired approvals")
+        
+        return count
+    except Exception as e:
+        logger.error(f"Error cleaning up expired approvals: {e}")
+        return 0
+
+
+def is_approval_command(message: str) -> bool:
+    """Check if a message is an approval/rejection command"""
+    if not message:
+        return False
     
+    message_lower = message.lower().strip()
+    
+    # Approval commands
+    approval_commands = [
+        "yes", "y", "send", "approve", "ok", "okay", "👍", "✅", 
+        "send it", "looks good", "good", "go ahead", "approve it"
+    ]
+    
+    # Rejection commands
+    rejection_commands = [
+        "no", "n", "reject", "cancel", "skip", "👎", "❌", "don't send",
+        "do not send", "reject it", "cancel it", "skip it", "no thanks"
+    ]
+    
+    all_commands = approval_commands + rejection_commands
+    
+    return message_lower in all_commands
+
+
+def parse_approval_command(message: str) -> str:
+    """Parse approval command and return 'approved' or 'rejected'"""
+    if not message:
+        return "unknown"
+    
+    message_lower = message.lower().strip()
+    
+    approval_commands = [
+        "yes", "y", "send", "approve", "ok", "okay", "👍", "✅", 
+        "send it", "looks good", "good", "go ahead", "approve it"
+    ]
+    
+    rejection_commands = [
+        "no", "n", "reject", "cancel", "skip", "👎", "❌", "don't send",
+        "do not send", "reject it", "cancel it", "skip it", "no thanks"
+    ]
+    
+    if message_lower in approval_commands:
+        return "approved"
+    elif message_lower in rejection_commands:
+        return "rejected"
+    else:
+        return "unknown"
+
+
+# =============================================================================
+# VEHICLE EMBEDDINGS CRUD OPERATIONS (for RAG system)
+# =============================================================================
+
+async def ensure_embeddings_for_dealership(
+    *, 
+    session: AsyncSession, 
+    dealership_id: str
+) -> dict:
+    """Ensure all inventory items have embeddings for RAG search."""
+    try:
+        from maqro_rag.db_retriever import DatabaseRAGRetriever
+        from maqro_rag.config import Config
+        
+        # Initialize RAG retriever
+        config = Config.from_yaml("config.yaml")  # Adjust path as needed
+        retriever = DatabaseRAGRetriever(config)
+        
+        # Build missing embeddings
+        built_count = await retriever.build_embeddings_for_dealership(
+            session=session,
+            dealership_id=dealership_id,
+            force_rebuild=False
+        )
+        
+        # Get stats
+        stats = await retriever.get_retriever_stats(session, dealership_id)
+        
+        logger.info(f"Built {built_count} new embeddings for dealership {dealership_id}")
+        
+        return {
+            "built_count": built_count,
+            "total_embeddings": stats.get("total_embeddings", 0),
+            "missing_embeddings": stats.get("missing_embeddings", 0),
+            "is_ready": stats.get("is_ready", False)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error ensuring embeddings for dealership {dealership_id}: {e}")
+        return {
+            "built_count": 0,
+            "total_embeddings": 0,
+            "missing_embeddings": 0,
+            "is_ready": False,
+            "error": str(e)
+        }
+
+
+async def refresh_embeddings_for_dealership(
+    *,
+    session: AsyncSession,
+    dealership_id: str
+) -> dict:
+    """Force refresh all embeddings for a dealership."""
+    try:
+        from maqro_rag.db_retriever import DatabaseRAGRetriever
+        from maqro_rag.config import Config
+        
+        # Initialize RAG retriever  
+        config = Config.from_yaml("config.yaml")
+        retriever = DatabaseRAGRetriever(config)
+        
+        # Force rebuild all embeddings
+        built_count = await retriever.build_embeddings_for_dealership(
+            session=session,
+            dealership_id=dealership_id,
+            force_rebuild=True
+        )
+        
+        # Get updated stats
+        stats = await retriever.get_retriever_stats(session, dealership_id)
+        
+        logger.info(f"Refreshed {built_count} embeddings for dealership {dealership_id}")
+        
+        return {
+            "rebuilt_count": built_count,
+            "total_embeddings": stats.get("total_embeddings", 0),
+            "is_ready": stats.get("is_ready", False)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error refreshing embeddings for dealership {dealership_id}: {e}")
+        return {
+            "rebuilt_count": 0,
+            "total_embeddings": 0,
+            "is_ready": False,
+            "error": str(e)
+        }
+
+
+async def get_rag_stats(
+    *,
+    session: AsyncSession,
+    dealership_id: str
+) -> dict:
+    """Get RAG system statistics for a dealership."""
+    try:
+        from maqro_rag.db_retriever import DatabaseRAGRetriever
+        from maqro_rag.config import Config
+        
+        # Initialize RAG retriever
+        config = Config.from_yaml("config.yaml")
+        retriever = DatabaseRAGRetriever(config)
+        
+        # Get stats
+        stats = await retriever.get_retriever_stats(session, dealership_id)
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Error getting RAG stats for dealership {dealership_id}: {e}")
+        return {"error": str(e)}

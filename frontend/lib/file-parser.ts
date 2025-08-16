@@ -107,19 +107,19 @@ export const fileParser = {
    */
   mapColumns(data: any[]): InventoryRow[] {
     return data.map(row => {
-      const make = this.getColumnValue(row, ['make', 'Make', 'MAKE', 'Make']);
-      const model = this.getColumnValue(row, ['model', 'Model', 'MODEL', 'Model']);
-      const year = this.getNumericValue(row, ['year', 'Year', 'YEAR', 'Year']);
-      const price = this.getNumericValue(row, ['price', 'Price', 'PRICE', 'Price']);
+      const make = this.getColumnValue(row, ['make', 'Make', 'MAKE']);
+      const model = this.getColumnValue(row, ['model', 'Model', 'MODEL']);
+      const year = this.getNumericValue(row, ['year', 'Year', 'YEAR']);
+      const price = this.getPriceValue(row, ['price', 'Price', 'PRICE']); // Use new price handler
       const mileage = this.getOptionalNumericValue(row, ['mileage', 'Mileage', 'MILEAGE']);
-      const description = this.getColumnValue(row, ['description', 'Description', 'DESC', 'Description']);
-      const features = this.getColumnValue(row, ['features', 'Features', 'FEATURES', 'Features']);
+      const description = this.getColumnValue(row, ['description', 'Description', 'DESC']);
+      const features = this.getColumnValue(row, ['features', 'Features', 'FEATURES']);
 
       return {
         make: make.toString(),
         model: model.toString(),
         year,
-        price,
+        price, // Now supports both number and string
         mileage,
         description: description.toString(),
         features: features.toString()
@@ -145,6 +145,23 @@ export const fileParser = {
   getNumericValue(row: any, columnNames: string[]): number {
     const value = this.getColumnValue(row, columnNames);
     return parseInt(value) || 0;
+  },
+
+  /**
+   * Get price value - can be number or string (like "TBD")
+   */
+  getPriceValue(row: any, columnNames: string[]): number | string {
+    const value = this.getColumnValue(row, columnNames);
+    
+    // If it's empty, default to "TBD"
+    if (!value || value.trim() === '') return 'TBD';
+    
+    // Try to parse as number first
+    const numValue = parseFloat(value.toString().replace(/[$,]/g, ''));
+    if (!isNaN(numValue)) return numValue;
+    
+    // If not a number, return as string (handles "TBD", "Call for price", etc.)
+    return value.toString();
   },
 
   /**

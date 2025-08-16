@@ -4,10 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 // NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
 // NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
   console.warn('Missing Supabase environment variables. Check your .env.local file.');
 }
 
@@ -18,13 +18,14 @@ export type Lead = {
   id: string;
   created_at: string;
   name: string;
-  car: string;
+  car_interest: string;
   source: string;
-  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold';
-  last_contact: string;
+  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold' | 'deal_won' | 'deal_lost' | 'appointment_booked';
+  last_contact_at: string;
   email?: string;
   phone?: string;
   message?: string;
+  max_price?: string;
   user_id: string; // Foreign key to auth.users
   conversations?: Conversation[];
 };
@@ -40,6 +41,7 @@ export type Inventory = {
   mileage?: number;
   description?: string;
   features?: string;
+  condition?: string;
   dealership_id: string; // Foreign key to auth.users
   status: 'active' | 'sold' | 'pending';
 };
@@ -50,6 +52,18 @@ export type Conversation = {
   message: string;
   sender: 'customer' | 'agent'
   lead_id: string;
+}
+
+export type UserProfile ={
+  id: string
+  user_id: string
+  dealership_id?: string | null
+  full_name: string
+  phone?: string
+  role: string
+  timezone: string
+  created_at: string
+  updated_at: string
 }
 
 // Helper function to check if user is logged in

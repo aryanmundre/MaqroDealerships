@@ -14,7 +14,8 @@ from maqro_backend.crud import (
     get_inventory_by_dealership,
     get_inventory_by_id,
     bulk_create_inventory_items,
-    get_inventory_count
+    get_inventory_count,
+    ensure_embeddings_for_dealership
 )
 import logging
 
@@ -47,12 +48,23 @@ async def create_inventory(
         dealership_id=dealership_id
     )
     
+    # Auto-generate embedding for this new inventory item
+    try:
+        logger.info(f"🧠 Generating embedding for new inventory item: {inventory.make} {inventory.model}")
+        embedding_result = await ensure_embeddings_for_dealership(
+            session=db,
+            dealership_id=dealership_id
+        )
+        logger.info(f"✅ Generated {embedding_result.get('built_count', 0)} embeddings")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to generate embedding (creation still successful): {e}")
+    
     return InventoryResponse(
         id=str(inventory.id),
         make=inventory.make,
         model=inventory.model,
         year=inventory.year,
-        price=inventory.price,
+        price=inventory.price or "0",
         mileage=inventory.mileage,
         description=inventory.description,
         features=inventory.features,
@@ -76,13 +88,20 @@ async def get_dealership_inventory(
     """
     inventory_items = await get_inventory_by_dealership(session=db, dealership_id=dealership_id)
     
-    return [
+    # Log sample items for debugging
+    if inventory_items:
+        sample_item = inventory_items[0]
+        logger.info(f"📝 Sample item: {sample_item.make} {sample_item.model} ({sample_item.year}) - ${sample_item.price}")
+    else:
+        logger.warning(f"⚠️ No inventory items found for dealership {dealership_id}")
+    
+    response_items = [
         InventoryResponse(
             id=str(item.id),
             make=item.make,
             model=item.model,
             year=item.year,
-            price=item.price,
+            price=item.price or "0",  # Keep as string to handle "TBD", "Call for price" etc.
             mileage=item.mileage,
             description=item.description,
             features=item.features,
@@ -92,6 +111,9 @@ async def get_dealership_inventory(
             updated_at=item.updated_at
         ) for item in inventory_items
     ]
+    
+    logger.info(f"✅ Returning {len(response_items)} formatted inventory items")
+    return response_items
 
 
 @router.get("/inventory/{inventory_id}", response_model=InventoryResponse)
@@ -119,7 +141,7 @@ async def get_inventory_item(
         make=inventory.make,
         model=inventory.model,
         year=inventory.year,
-        price=inventory.price,
+        price=inventory.price or "0",
         mileage=inventory.mileage,
         description=inventory.description,
         features=inventory.features,
@@ -159,12 +181,23 @@ async def update_inventory_item(
     await db.commit()
     await db.refresh(inventory)
     
+    # Auto-refresh embedding for the updated inventory item
+    try:
+        logger.info(f"🧠 Refreshing embedding for updated inventory item: {inventory.make} {inventory.model}")
+        embedding_result = await ensure_embeddings_for_dealership(
+            session=db,
+            dealership_id=dealership_id
+        )
+        logger.info(f"✅ Generated {embedding_result.get('built_count', 0)} embeddings")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to refresh embedding (update still successful): {e}")
+    
     return InventoryResponse(
         id=str(inventory.id),
         make=inventory.make,
         model=inventory.model,
         year=inventory.year,
-        price=inventory.price,
+        price=inventory.price or "0",
         mileage=inventory.mileage,
         description=inventory.description,
         features=inventory.features,
@@ -241,10 +274,26 @@ async def upload_inventory_file(
             inventory_data=inventory_list,
             dealership_id=dealership_id
         )
+        
+        # Auto-generate embeddings for RAG system
+        embedding_result = {"built_count": 0, "error": None}
+        try:
+            logger.info(f"🧠 Generating embeddings for {num_created} new inventory items...")
+            embedding_result = await ensure_embeddings_for_dealership(
+                session=db,
+                dealership_id=dealership_id
+            )
+            logger.info(f"✅ Generated {embedding_result.get('built_count', 0)} embeddings")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to generate embeddings (upload still successful): {e}")
+            embedding_result["error"] = str(e)
+        
         return {
             "message": f"Successfully uploaded {num_created} inventory items.",
             "success_count": num_created,
-            "error_count": len(inventory_list) - num_created
+            "error_count": len(inventory_list) - num_created,
+            "embeddings_generated": embedding_result.get("built_count", 0),
+            "embeddings_error": embedding_result.get("error")
         }
     except Exception as e:
         logger.error(f"Database error during bulk insert: {e}")

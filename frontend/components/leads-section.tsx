@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Globe, Facebook, Instagram, Phone } from "lucide-react"
 import Link from "next/link"
-import { getLeads } from "@/lib/leads-api"
+import { getMyLeads } from "@/lib/leads-api"
 import { Lead } from "@/lib/supabase"
 import { useAuth } from "@/components/auth/auth-provider"
 
@@ -22,6 +22,9 @@ const statusColors = {
   hot: "bg-red-500/20 text-red-400 border-red-500/30",
   "follow-up": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   cold: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  "appointment_booked": "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  "deal_won": "bg-green-500/20 text-green-400 border-green-500/30",
+  "deal_lost": "bg-red-600/20 text-red-300 border-red-600/30",
 }
 
 interface LeadsSectionProps {
@@ -39,7 +42,7 @@ export function LeadsSection({ searchTerm = "" }: LeadsSectionProps) {
     async function fetchLeads() {
       try {
         setLoading(true);
-        const data = await getLeads(searchTerm);
+        const data = await getMyLeads(searchTerm);
         setLeads(data);
         setError(null);
       } catch (err) {
@@ -95,7 +98,7 @@ export function LeadsSection({ searchTerm = "" }: LeadsSectionProps) {
                         </div>
                         <div>
                           <h4 className="font-semibold text-gray-100">{lead.name}</h4>
-                          <p className="text-gray-400 text-sm">{lead.car}</p>
+                          <p className="text-gray-400 text-sm">{lead.car_interest}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <SourceIcon className="w-4 h-4 text-gray-500" />
                             <span className="text-gray-500 text-sm">{lead.source}</span>
@@ -106,7 +109,7 @@ export function LeadsSection({ searchTerm = "" }: LeadsSectionProps) {
                         <Badge className={`${statusColors[lead.status as keyof typeof statusColors]} border`}>
                           {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
                         </Badge>
-                        <p className="text-gray-500 text-sm mt-2">{lead.last_contact}</p>
+                        <p className="text-gray-500 text-sm mt-2">{lead.last_contact_at}</p>
                       </div>
                     </div>
                   </CardContent>

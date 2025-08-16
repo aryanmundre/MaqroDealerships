@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 
+
 // 1. Helper to get Supabase session
 async function getSupabaseAuth() {
   const { data: { session }, error } = await supabase.auth.getSession();
@@ -32,16 +33,11 @@ export async function getAuthenticatedApi() {
 
   return {
     get: async <T>(endpoint: string): Promise<T> => {
-      console.log(`Making GET request to: ${baseUrl}${endpoint}`);
-      console.log('Headers:', headers);
-      
       try {
         const response = await fetch(`${baseUrl}${endpoint}`, {
           method: 'GET',
           headers,
         });
-        
-        console.log(`Response status: ${response.status} ${response.statusText}`);
         
         if (!response.ok) {
           const errorText = await response.text().catch(() => response.statusText);
@@ -56,7 +52,6 @@ export async function getAuthenticatedApi() {
         }
         
         const data = await response.json();
-        console.log(`GET ${endpoint} successful:`, data);
         return data;
       } catch (error) {
         console.error(`Network error for GET ${endpoint}:`, error);

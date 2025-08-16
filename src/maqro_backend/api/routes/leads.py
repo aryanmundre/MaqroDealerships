@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from maqro_backend.api.deps import get_db_session, get_current_user_id, get_user_dealership_id
@@ -7,7 +7,9 @@ from maqro_backend.crud import (
     create_lead_with_initial_message, 
     get_all_leads_ordered, 
     get_lead_by_id,
-    get_lead_stats
+    get_lead_stats,
+    get_leads_by_salesperson,
+    get_leads_with_conversations_summary_by_salesperson
 )
 import logging
 
@@ -15,7 +17,111 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+me_router = APIRouter(prefix="/me", tags=["Me / My Leads"])
+dealer_router = APIRouter(prefix="/dealership", tags=["Dealer Leads"])
 
+
+@me_router.get("/leads", response_model=List[LeadResponse])
+async def get_my_leads(
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_current_user_id),
+):
+    leads = await get_leads_by_salesperson(session=db, salesperson_id=user_id)
+    return [
+        LeadResponse(
+            id=str(lead.id),
+            name=lead.name,
+            email=lead.email,
+            phone=lead.phone,
+            car_interest=lead.car_interest,
+            source=lead.source,
+            status=lead.status,
+            last_contact_at=lead.last_contact_at,
+            message=lead.message,
+            deal_value=lead.deal_value,
+            max_price=lead.max_price,
+            appointment_datetime=lead.appointment_datetime,
+            user_id=str(lead.user_id) if lead.user_id else None,
+            dealership_id=str(lead.dealership_id),
+            created_at=lead.created_at
+        ) for lead in leads
+    ]  
+
+@me_router.get("/leads-with-conversations-summary")
+async def get_my_leads_with_conversations_summary(
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Optimized endpoint that returns leads with their latest conversation in one query.
+    This replaces the N+1 query pattern and dramatically improves performance.
+    """
+    leads_with_conversations = await get_leads_with_conversations_summary_by_salesperson(
+        session=db, 
+        salesperson_id=user_id
+    )
+    return leads_with_conversations
+
+
+@me_router.get("/leads/{lead_id}", response_model=LeadResponse)
+async def get_my_lead_by_id(
+    lead_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    user_id: str = Depends(get_current_user_id),
+):
+    lead = await get_lead_by_id(session=db, lead_id=lead_id)
+    if not lead or str(lead.user_id) != user_id:
+        raise HTTPException(status_code=404, detail="Lead not found or access denied")
+    return LeadResponse(
+        id=str(lead.id),
+        name=lead.name,
+        email=lead.email,
+        phone=lead.phone,
+        car_interest=lead.car_interest,
+        source=lead.source,
+        status=lead.status,
+        last_contact_at=lead.last_contact_at,
+        message=lead.message,
+        deal_value=lead.deal_value,
+        max_price=lead.max_price,
+        appointment_datetime=lead.appointment_datetime,
+        user_id=str(lead.user_id) if lead.user_id else None,
+        dealership_id=str(lead.dealership_id),
+        created_at=lead.created_at
+    )
+
+
+@dealer_router.get("/{dealership_id}/leads", response_model=List[LeadResponse])
+async def get_dealership_leads(
+    dealership_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    caller_dealership_id: str = Depends(get_user_dealership_id)
+    ):
+    if dealership_id != caller_dealership_id:
+        raise HTTPException(status_code=403, detail="Access denied to this dealership's leads")
+    leads = await get_all_leads_ordered(session=db, dealership_id=dealership_id)
+    return [
+        LeadResponse(
+            id=str(lead.id),
+            name=lead.name,
+            email=lead.email,
+            phone=lead.phone,
+            car_interest=lead.car_interest,
+            source=lead.source,
+            status=lead.status,
+            last_contact_at=lead.last_contact_at,
+            message=lead.message,
+            deal_value=lead.deal_value,
+            max_price=lead.max_price,
+            appointment_datetime=lead.appointment_datetime,
+            user_id=str(lead.user_id) if lead.user_id else None,
+            dealership_id=str(lead.dealership_id),
+            created_at=lead.created_at
+        ) for lead in leads
+    ]
+
+router.include_router(me_router)
+router.include_router(dealer_router)
 
 @router.post("/leads")
 async def create_lead(
@@ -71,12 +177,13 @@ async def get_all_leads(
             name=lead.name,
             email=lead.email,
             phone=lead.phone,
-            car=lead.car,
+            car_interest=lead.car_interest,
             source=lead.source,
             status=lead.status,
-            last_contact=lead.last_contact,
+            last_contact_at=lead.last_contact_at,
             message=lead.message,
             deal_value=lead.deal_value,
+            max_price=lead.max_price,
             appointment_datetime=lead.appointment_datetime,
             user_id=str(lead.user_id) if lead.user_id else None,
             dealership_id=str(lead.dealership_id),
@@ -110,12 +217,13 @@ async def get_lead(
         name=lead.name,
         email=lead.email,
         phone=lead.phone,
-        car=lead.car,
+        car_interest=lead.car_interest,
         source=lead.source,
         status=lead.status,
-        last_contact=lead.last_contact,
+        last_contact_at=lead.last_contact_at,
         message=lead.message,
         deal_value=lead.deal_value,
+        max_price=lead.max_price,
         appointment_datetime=lead.appointment_datetime,
         user_id=str(lead.user_id) if lead.user_id else None,
         dealership_id=str(lead.dealership_id),
@@ -152,12 +260,13 @@ async def update_lead(
         name=lead.name,
         email=lead.email,
         phone=lead.phone,
-        car=lead.car,
+        car_interest=lead.car_interest,
         source=lead.source,
         status=lead.status,
-        last_contact=lead.last_contact,
+        last_contact_at=lead.last_contact_at,
         message=lead.message,
         deal_value=lead.deal_value,
+        max_price=lead.max_price,
         appointment_datetime=lead.appointment_datetime,
         user_id=str(lead.user_id) if lead.user_id else None,
         dealership_id=str(lead.dealership_id),

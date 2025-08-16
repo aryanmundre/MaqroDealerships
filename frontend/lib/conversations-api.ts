@@ -11,41 +11,93 @@ export async function addMessage(leadId: string, message: string): Promise<Conve
   return api.post<Conversation>('/messages', { lead_id: leadId, message, sender: 'agent' });
 }
 
-// New function to get leads with their conversation summaries
-export async function getLeadsWithConversations(): Promise<LeadWithConversationSummary[]> {
+export async function getLeadsWithConversations(opts: {
+  scope?: 'mine' | 'dealership';
+  dealershipId?: string;
+  searchTerm?: string;
+} = {}): Promise<LeadWithConversationSummary[]> {
+  const { scope = 'mine', dealershipId, searchTerm } = opts;
+
   const api = await getAuthenticatedApi();
-  // Get all leads first
-  const leads = await api.get<Lead[]>('/leads');
-  
-  // For each lead, get their conversations to find the latest message
-  const leadsWithConversations = await Promise.all(
+
+  // Use optimized endpoint for 'mine' scope to eliminate N+1 queries
+  if (scope === 'mine') {
+    // TODO: Add search support to the optimized endpoint
+    if (searchTerm) {
+      console.warn('Search not yet supported with optimized endpoint, falling back to old method');
+      return getLeadsWithConversationsLegacy(opts);
+    }
+    
+    // Single optimized API call that returns leads with conversation summaries
+    return api.get<LeadWithConversationSummary[]>('/me/leads-with-conversations-summary');
+  }
+
+  // For dealership scope, fall back to the legacy method for now
+  return getLeadsWithConversationsLegacy(opts);
+}
+
+// Legacy method kept for dealership scope and search functionality
+async function getLeadsWithConversationsLegacy(opts: {
+  scope?: 'mine' | 'dealership';
+  dealershipId?: string;
+  searchTerm?: string;
+} = {}): Promise<LeadWithConversationSummary[]> {
+  const { scope = 'mine', dealershipId, searchTerm } = opts;
+
+  const api = await getAuthenticatedApi();
+
+  /* ────────────────────────────────────────────────────────────────────────
+     1. Figure out which lead list endpoint to hit
+     ──────────────────────────────────────────────────────────────────────── */
+  let leadsEndpoint: string;
+  if (scope === 'mine') {
+    leadsEndpoint = searchTerm
+      ? `/me/leads?search=${encodeURIComponent(searchTerm)}`
+      : '/me/leads';
+  } else {
+    if (!dealershipId)
+      throw new Error('dealershipId is required when scope = "dealership"');
+    leadsEndpoint = searchTerm
+      ? `/dealerships/${dealershipId}/leads?search=${encodeURIComponent(
+          searchTerm
+        )}`
+      : `/dealerships/${dealershipId}/leads`;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────────
+     2. Fetch leads, then enrich each one with its latest message
+     ──────────────────────────────────────────────────────────────────────── */
+  const leads = await api.get<Lead[]>(leadsEndpoint);
+
+  const leadsWithConversations: LeadWithConversationSummary[] = await Promise.all(
     leads.map(async (lead) => {
       try {
-        const conversations = await api.get<Conversation[]>(`/leads/${lead.id}/conversations`);
-        // The backend returns conversations ordered by creation date, so the last one is the newest.
-        const latestConversation = conversations.length > 0 
-          ? conversations[conversations.length - 1] 
-          : null;
-        
+        const conversations = await api.get<Conversation[]>(
+          `/leads/${lead.id}/conversations`
+        );
+
+        const latest = conversations.at(-1); // last element or undefined
         return {
           id: lead.id,
           name: lead.name,
-          car: lead.car || '',
+          car_interest: lead.car_interest ?? '',
           status: lead.status,
           email: lead.email,
           phone: lead.phone,
-          lastMessage: latestConversation?.message || 'No messages yet',
-          lastMessageTime: latestConversation ? formatTimeAgo(latestConversation.created_at) : 'Never',
-          unreadCount: 0, // TODO: Implement unread count logic
+          lastMessage: latest?.message ?? 'No messages yet',
+          lastMessageTime: latest
+            ? formatTimeAgo(latest.created_at)
+            : 'Never',
+          unreadCount: 0, // TODO: compute from backend flag
           created_at: lead.created_at,
-          conversationCount: conversations.length
+          conversationCount: conversations.length,
         };
-      } catch (error) {
-        console.error(`Error fetching conversations for lead ${lead.id}:`, error);
+      } catch (e) {
+        console.error(`Failed to fetch conv for lead ${lead.id}`, e);
         return {
           id: lead.id,
           name: lead.name,
-          car: lead.car || '',
+          car_interest: lead.car_interest ?? '',
           status: lead.status,
           email: lead.email,
           phone: lead.phone,
@@ -53,24 +105,22 @@ export async function getLeadsWithConversations(): Promise<LeadWithConversationS
           lastMessageTime: 'Unknown',
           unreadCount: 0,
           created_at: lead.created_at,
-          conversationCount: 0
+          conversationCount: 0,
         };
       }
     })
   );
-  
-  // Sort leads by the most recent conversation
-  leadsWithConversations.sort((a, b) => {
-    if (a.lastMessageTime === 'Never') return 1;
-    if (b.lastMessageTime === 'Never') return -1;
-    if (a.lastMessageTime === 'Unknown') return 1;
-    if (b.lastMessageTime === 'Unknown') return -1;
-    // A simple sort that assumes `created_at` can be compared lexicographically
-    return b.created_at.localeCompare(a.created_at);
-  });
-  
+
+  /* ────────────────────────────────────────────────────────────────────────
+     3. Sort by most recent conversation
+     ──────────────────────────────────────────────────────────────────────── */
+  leadsWithConversations.sort((a, b) =>
+    b.created_at.localeCompare(a.created_at)
+  );
+
   return leadsWithConversations;
 }
+
 
 // Helper function to format time ago
 function formatTimeAgo(dateString: string): string {
@@ -91,13 +141,15 @@ function formatTimeAgo(dateString: string): string {
 export type LeadWithConversationSummary = {
   id: string;
   name: string;
-  car: string;
-  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold';
+  car_interest: string;
+  status: 'new' | 'warm' | 'hot' | 'follow-up' | 'cold' | 'deal_won' | 'deal_lost' | 'appointment_booked';
   email?: string;
   phone?: string;
   lastMessage: string;
   lastMessageTime: string;
   unreadCount: number;
   created_at: string;
+  deal_value?: number;
+  appointment_date?: string;
   conversationCount: number;
 };
